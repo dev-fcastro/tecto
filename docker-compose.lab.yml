@@ -1,0 +1,158 @@
+services:
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: synset-homepage
+    restart: unless-stopped
+    environment:
+      PUID: 1000
+      PGID: 1000
+      HOMEPAGE_ALLOWED_HOSTS: lab.server.synsetsolutions.com
+    volumes:
+      - ./config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [synset-public, synset-lab]
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.homepage.rule=Host(`lab.server.synsetsolutions.com`)"
+      - traefik.http.routers.homepage.entrypoints=websecure
+      - traefik.http.routers.homepage.tls.certresolver=le
+      - traefik.http.services.homepage.loadbalancer.server.port=3000
+
+  it-tools:
+    image: ghcr.io/corentinth/it-tools:latest
+    restart: unless-stopped
+    networks: [synset-public, synset-lab]
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.it-tools.rule=Host(`tools.server.synsetsolutions.com`)"
+      - traefik.http.routers.it-tools.entrypoints=websecure
+      - traefik.http.routers.it-tools.tls.certresolver=le
+      - traefik.http.services.it-tools.loadbalancer.server.port=80
+
+  stirling-pdf:
+    image: frooodle/s-pdf:latest
+    restart: unless-stopped
+    volumes:
+      - ./data/stirling:/usr/share/tessdata
+    environment:
+      DOCKER_ENABLE_SECURITY: "false"
+    networks: [synset-public, synset-lab]
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.stirling.rule=Host(`pdf.server.synsetsolutions.com`)"
+      - traefik.http.routers.stirling.entrypoints=websecure
+      - traefik.http.routers.stirling.tls.certresolver=le
+      - traefik.http.services.stirling.loadbalancer.server.port=8080
+
+  excalidraw:
+    image: excalidraw/excalidraw:latest
+    restart: unless-stopped
+    networks: [synset-public, synset-lab]
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.excalidraw.rule=Host(`draw.server.synsetsolutions.com`)"
+      - traefik.http.routers.excalidraw.entrypoints=websecure
+      - traefik.http.routers.excalidraw.tls.certresolver=le
+      - traefik.http.services.excalidraw.loadbalancer.server.port=80
+
+  actual-budget:
+    image: actualbudget/actual-server:latest
+    restart: unless-stopped
+    volumes:
+      - actual_data:/data
+    networks: [synset-public, synset-lab]
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.budget.rule=Host(`budget.server.synsetsolutions.com`)"
+      - traefik.http.routers.budget.entrypoints=websecure
+      - traefik.http.routers.budget.tls.certresolver=le
+      - traefik.http.services.budget.loadbalancer.server.port=5006
+
+  memos:
+    image: neosmemo/memos:stable
+    restart: unless-stopped
+    volumes:
+      - memos_data:/var/opt/memos
+    networks: [synset-public, synset-lab]
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.memos.rule=Host(`memos.server.synsetsolutions.com`)"
+      - traefik.http.routers.memos.entrypoints=websecure
+      - traefik.http.routers.memos.tls.certresolver=le
+      - traefik.http.services.memos.loadbalancer.server.port=5230
+
+  kavita:
+    image: kizaing/kavita:latest
+    restart: unless-stopped
+    volumes:
+      - ./data/books:/books
+      - kavita_data:/kavita/config
+    networks: [synset-public, synset-lab]
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.kavita.rule=Host(`books.server.synsetsolutions.com`)"
+      - traefik.http.routers.kavita.entrypoints=websecure
+      - traefik.http.routers.kavita.tls.certresolver=le
+      - traefik.http.services.kavita.loadbalancer.server.port=5000
+
+  ghost:
+    image: ghost:5-alpine
+    restart: unless-stopped
+    volumes:
+      - ghost_data:/var/lib/ghost/content
+    environment:
+      url: https://blog.server.synsetsolutions.com
+      NODE_ENV: production
+      database__client: sqlite3
+      database__connection__filename: /var/lib/ghost/content/data/ghost.db
+    networks: [synset-public, synset-lab]
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.ghost.rule=Host(`blog.server.synsetsolutions.com`)"
+      - traefik.http.routers.ghost.entrypoints=websecure
+      - traefik.http.routers.ghost.tls.certresolver=le
+      - traefik.http.services.ghost.loadbalancer.server.port=2368
+
+  wikijs:
+    image: ghcr.io/requarks/wiki:2
+    restart: unless-stopped
+    volumes:
+      - ./config/wikijs.yml:/wiki/config.yml
+    networks: [synset-public, synset-lab, synset-db]
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.wikijs.rule=Host(`wiki.server.synsetsolutions.com`)"
+      - traefik.http.routers.wikijs.entrypoints=websecure
+      - traefik.http.routers.wikijs.tls.certresolver=le
+      - traefik.http.services.wikijs.loadbalancer.server.port=3000
+
+  tecto:
+    image: synset-tecto:latest
+    volumes:
+      - /opt/synset/tecto/static:/app/static
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://synset_admin:xWdiVJl7y1eJJhcO6S%2FAqfgz1QvPznGs@synset-postgres:5432/tecto
+    networks: [synset-public, synset-lab, synset-db]
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.tecto.rule=Host(`tecto.server.synsetsolutions.com`)"
+      - traefik.http.routers.tecto.entrypoints=websecure
+      - traefik.http.routers.tecto.tls.certresolver=le
+      - traefik.http.services.tecto.loadbalancer.server.port=8080
+
+
+networks:
+  synset-public:
+    external: true
+  synset-lab:
+    external: true
+  synset-db:
+    external: true
+
+volumes:
+  actual_data:
+  memos_data:
+  kavita_data:
+  ghost_data:

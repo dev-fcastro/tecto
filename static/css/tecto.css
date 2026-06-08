@@ -1,0 +1,237 @@
+/* Tecto — Color tokens
+ * Warm ink/paper neutrals + amber "TeX" accent. Light is :root, dark is .dark.
+ */
+:root {
+  /* Brand / accent — warm amber, the colour of typeset warmth */
+  --accent:            #c75b12;
+  --accent-hover:      #a84a0e;
+  --accent-active:     #8f3f0c;
+  --accent-subtle-bg:  #fbefe3;
+  --accent-subtle-fg:  #9a4410;
+  --accent-on:         #ffffff;
+  --accent-ring:       rgba(199, 91, 18, 0.32);
+
+  /* Paper & surfaces (warm neutrals) */
+  --paper:             #ffffff;
+  --bg:                #faf9f7;
+  --bg-subtle:         #f3f1ed;
+  --surface:           #ffffff;
+  --surface-raised:    #ffffff;
+  --surface-sunken:    #f6f4f0;
+  --surface-hover:     #f3f1ed;
+
+  /* Borders */
+  --border:            #e8e4de;
+  --border-strong:     #d8d1c8;
+  --border-accent:     #e9b489;
+
+  /* Ink (text) */
+  --ink-strong:        #1c1a17;
+  --ink:               #2e2a26;
+  --ink-muted:         #6b635b;
+  --ink-subtle:        #9a9087;
+  --ink-on-accent:     #ffffff;
+
+  /* Semantic — compile states */
+  --success:           #1f8a4c;
+  --success-fg:        #156b3a;
+  --success-bg:        #e7f4ec;
+  --danger:            #c8372d;
+  --danger-fg:         #a12a22;
+  --danger-bg:         #fbeae8;
+  --warning:           #b7791f;
+  --warning-fg:        #8a5a12;
+  --warning-bg:        #fbf1de;
+  --info:              #2563b8;
+  --info-fg:           #1b4c8f;
+  --info-bg:           #e7f0fb;
+
+  /* Editor syntax (LaTeX) */
+  --code-bg:           #fbfaf8;
+  --code-gutter:       #b8afa4;
+  --code-cmd:          #c75b12; /* \command */
+  --code-bracket:      #6b635b;
+  --code-math:         #1f8a4c; /* $...$ */
+  --code-comment:      #9a9087;
+  --code-string:       #2563b8;
+  --code-text:         #2e2a26;
+}
+
+.dark {
+  --accent:            #ef7a2a;
+  --accent-hover:      #f2873d;
+  --accent-active:     #d96a1f;
+  --accent-subtle-bg:  #2c1d12;
+  --accent-subtle-fg:  #f3a062;
+  --accent-on:         #1a1714;
+  --accent-ring:       rgba(239, 122, 42, 0.34);
+
+  --paper:             #ffffff; /* the PDF page stays paper-white */
+  --bg:                #1a1714;
+  --bg-subtle:         #161310;
+  --surface:           #221e1a;
+  --surface-raised:    #292420;
+  --surface-sunken:    #161310;
+  --surface-hover:     #2b2620;
+
+  --border:            #36302a;
+  --border-strong:     #4a4239;
+  --border-accent:     #6e4a2b;
+
+  --ink-strong:        #f6f3ef;
+  --ink:               #e7e2db;
+  --ink-muted:         #a79d92;
+  --ink-subtle:        #7c7268;
+  --ink-on-accent:     #1a1714;
+
+  --success:           #36b56a;
+  --success-fg:        #7fd6a3;
+  --success-bg:        #16271d;
+  --danger:            #e35a4f;
+  --danger-fg:         #f0a39c;
+  --danger-bg:         #2a1714;
+  --warning:           #d9a23a;
+  --warning-fg:        #ecc784;
+  --warning-bg:        #271d10;
+  --info:              #5b95e6;
+  --info-fg:           #a8c6f2;
+  --info-bg:           #141d2a;
+
+  --code-bg:           #1d1916;
+  --code-gutter:       #6a6056;
+  --code-cmd:          #ef9b5e;
+  --code-bracket:      #a79d92;
+  --code-math:         #4fc585;
+  --code-comment:      #7c7268;
+  --code-string:       #7fabef;
+  --code-text:         #e7e2db;
+}
+/* Tecto — Webfonts
+ * IBM Plex superfamily (Serif · Sans · Mono), OFL.
+ * NOTE: loaded from Google Fonts CDN. To fully self-host, drop the .woff2
+ * files into assets/fonts/ and replace this @import with local @font-face rules.
+ */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+/* Tecto — Motion (snappy, no bounce) */
+:root {
+  --ease-out:    cubic-bezier(0.2, 0, 0, 1); /* @kind other */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
+  --ease-in:     cubic-bezier(0.5, 0, 1, 1); /* @kind other */
+
+  --dur-1: 120ms; /* @kind other */
+  --dur-2: 180ms; /* @kind other */
+  --dur-3: 240ms; /* @kind other */
+  --dur-4: 360ms; /* @kind other */
+
+  --transition-colors: color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
+}
+/* Tecto — Border radius (tight, precise) */
+:root {
+  --radius-xs:  3px;
+  --radius-sm:  5px;
+  --radius-md:  7px;
+  --radius-lg:  10px;
+  --radius-xl:  14px;
+  --radius-2xl: 18px;
+  --radius-full:9999px;
+}
+/* Tecto — Elevation (warm-tinted, subtle) */
+:root {
+  --shadow-xs:  0 1px 2px rgba(28,26,23,0.06);
+  --shadow-sm:  0 1px 3px rgba(28,26,23,0.08), 0 1px 2px rgba(28,26,23,0.05);
+  --shadow-md:  0 4px 12px -2px rgba(28,26,23,0.10), 0 2px 6px -2px rgba(28,26,23,0.07);
+  --shadow-lg:  0 12px 32px -8px rgba(28,26,23,0.16), 0 6px 14px -6px rgba(28,26,23,0.10);
+  --shadow-xl:  0 24px 56px -12px rgba(28,26,23,0.22), 0 10px 22px -10px rgba(28,26,23,0.12);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset: inset 0 1px 2px rgba(28,26,23,0.06);
+}
+
+.dark {
+  --shadow-xs:  0 1px 2px rgba(0,0,0,0.30);
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.36), 0 1px 2px rgba(0,0,0,0.28);
+  --shadow-md:  0 4px 12px -2px rgba(0,0,0,0.42), 0 2px 6px -2px rgba(0,0,0,0.34);
+  --shadow-lg:  0 12px 32px -8px rgba(0,0,0,0.52), 0 6px 14px -6px rgba(0,0,0,0.40);
+  --shadow-xl:  0 24px 56px -12px rgba(0,0,0,0.60), 0 10px 22px -10px rgba(0,0,0,0.44);
+  --shadow-inset: inset 0 1px 2px rgba(0,0,0,0.40);
+}
+/* Tecto — Spacing scale (4px base) */
+:root {
+  --space-0:    0px;
+  --space-px:   1px;
+  --space-0-5:  2px;
+  --space-1:    4px;
+  --space-1-5:  6px;
+  --space-2:    8px;
+  --space-3:    12px;
+  --space-4:    16px;
+  --space-5:    20px;
+  --space-6:    24px;
+  --space-7:    28px;
+  --space-8:    32px;
+  --space-10:   40px;
+  --space-12:   48px;
+  --space-16:   64px;
+  --space-20:   80px;
+  --space-24:   96px;
+  --space-32:   128px;
+
+  /* Layout constants */
+  --topbar-h:   52px;
+  --statusbar-h:28px;
+  --rail-w:     56px;
+  --sidebar-w:  264px;
+  --container:  1200px;
+}
+/* Tecto — Typography tokens */
+:root {
+  /* Families */
+  --font-serif: 'IBM Plex Serif', Georgia, 'Times New Roman', serif;
+  --font-sans:  'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:  'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+
+  /* Type scale (px) — 14px UI base, enterprise density */
+  --text-2xs: 11px;
+  --text-xs:  12px;
+  --text-sm:  13px;
+  --text-base:14px;
+  --text-md:  15px;
+  --text-lg:  17px;
+  --text-xl:  20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 38px;
+  --text-5xl: 48px;
+  --text-6xl: 62px;
+
+  /* Line heights */
+  --leading-none: 1;
+  --leading-tight: 1.18;
+  --leading-snug: 1.35;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.7;
+
+  /* Weights */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Tracking */
+  --tracking-tighter: -0.02em;
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.02em;
+  --tracking-wider: 0.06em;
+  --tracking-caps: 0.08em;
+
+  /* Semantic type roles */
+  --type-display: var(--weight-semibold) var(--text-5xl)/var(--leading-tight) var(--font-serif);
+  --type-h1: var(--weight-semibold) var(--text-3xl)/var(--leading-tight) var(--font-serif);
+  --type-h2: var(--weight-semibold) var(--text-2xl)/var(--leading-snug) var(--font-sans);
+  --type-h3: var(--weight-semibold) var(--text-lg)/var(--leading-snug) var(--font-sans);
+  --type-body: var(--weight-regular) var(--text-base)/var(--leading-normal) var(--font-sans);
+  --type-label: var(--weight-medium) var(--text-sm)/var(--leading-snug) var(--font-sans);
+  --type-mono: var(--weight-regular) var(--text-sm)/var(--leading-snug) var(--font-mono);
+  --type-caps: var(--weight-semibold) var(--text-2xs)/var(--leading-snug) var(--font-mono);
+}

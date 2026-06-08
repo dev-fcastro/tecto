@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tecto — Editor LaTeX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+/* ── Tecto Design Tokens ─────────────────────────────────────────────────── */
+:root {
+  --accent:#c75b12;--accent-hover:#a84a0e;--accent-active:#8f3f0c;
+  --accent-subtle-bg:#fbefe3;--accent-subtle-fg:#9a4410;--accent-on:#fff;
+  --accent-ring:rgba(199,91,18,.32);
+  --paper:#fff;--bg:#faf9f7;--bg-subtle:#f3f1ed;
+  --surface:#fff;--surface-raised:#fff;--surface-sunken:#f6f4f0;--surface-hover:#f3f1ed;
+  --border:#e8e4de;--border-strong:#d8d1c8;--border-accent:#e9b489;
+  --ink-strong:#1c1a17;--ink:#2e2a26;--ink-muted:#6b635b;--ink-subtle:#9a9087;
+  --success:#1f8a4c;--success-fg:#156b3a;--success-bg:#e7f4ec;
+  --danger:#c8372d;--danger-fg:#a12a22;--danger-bg:#fbeae8;
+  --warning:#b7791f;--warning-bg:#fbf1de;
+  --code-bg:#fbfaf8;--code-gutter:#b8afa4;--code-cmd:#c75b12;
+  --code-math:#1f8a4c;--code-comment:#9a9087;--code-text:#2e2a26;
+  --font-serif:'IBM Plex Serif',Georgia,serif;
+  --font-sans:'IBM Plex Sans',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--radius-xl:14px;--radius-full:9999px;
+  --shadow-sm:0 1px 3px rgba(28,26,23,.08);
+  --shadow-md:0 3px 8px rgba(28,26,23,.1);
+  --shadow-lg:0 8px 24px rgba(28,26,23,.12);
+  --shadow-xl:0 16px 48px rgba(28,26,23,.16);
+  --topbar-h:52px;--rail-w:48px;--statusbar-h:28px;
+}
+.dark {
+  --accent:#ef7a2a;--accent-hover:#f2873d;--accent-subtle-bg:#2c1d12;--accent-subtle-fg:#f3a062;--accent-on:#1a1714;
+  --paper:#fff;--bg:#1a1714;--bg-subtle:#161310;
+  --surface:#221e1a;--surface-raised:#292420;--surface-sunken:#161310;--surface-hover:#2b2620;
+  --border:#36302a;--border-strong:#4a4239;--border-accent:#6e4a2b;
+  --ink-strong:#f6f3ef;--ink:#e7e2db;--ink-muted:#a79d92;--ink-subtle:#7c7268;
+  --success:#36b56a;--success-fg:#7fd6a3;--success-bg:#16271d;
+  --danger:#e35a4f;--danger-fg:#f0a39c;--danger-bg:#2a1714;
+  --warning:#d9a23a;--warning-bg:#271d10;
+  --code-bg:#1d1916;--code-gutter:#6a6056;--code-cmd:#ef9b5e;--code-math:#4fc585;--code-comment:#7c7268;--code-text:#e7e2db;
+}
+
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;overflow:hidden}
+body{font-family:var(--font-sans);font-size:14px;background:var(--bg);color:var(--ink)}
+button{font-family:inherit;cursor:pointer;border:none}
+input{font-family:inherit}
+a{color:inherit;text-decoration:none}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.app{height:100%;display:flex;flex-direction:column}
+.topbar{height:var(--topbar-h);display:flex;align-items:center;gap:10px;padding:0 14px;
+  background:var(--surface);border-bottom:1px solid var(--border);flex:none}
+.topbar__spacer{flex:1}
+.body{flex:1;min-height:0;display:flex}
+.rail{width:var(--rail-w);flex:none;background:var(--surface-sunken);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.split{flex:1;min-height:0;display:flex}
+.editor-pane{flex:1.1;min-width:0;border-right:1px solid var(--border);display:flex;flex-direction:column}
+.preview-pane{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface-sunken)}
+.statusbar{height:var(--statusbar-h);display:flex;align-items:center;gap:14px;padding:0 14px;
+  background:var(--surface-sunken);border-top:1px solid var(--border);font-family:var(--font-mono);font-size:11px;color:var(--ink-muted);flex:none}
+.statusbar__sp{flex:1}
+
+/* ── Library panel ───────────────────────────────────────────────────────── */
+.lib-panel{display:none;flex-direction:column;height:100%;background:var(--surface)}
+.lib-panel.active{display:flex}
+.lib-header{padding:14px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.lib-title{font-family:var(--font-serif);font-size:16px;font-weight:600;color:var(--ink-strong)}
+.lib-list{flex:1;overflow-y:auto;padding:8px}
+.lib-empty{padding:32px 16px;text-align:center;color:var(--ink-subtle);font-size:13px}
+.doc-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--radius-md);cursor:pointer;
+  border:1px solid transparent;transition:background .12s}
+.doc-row:hover{background:var(--surface-hover)}
+.doc-row.active{background:var(--accent-subtle-bg);border-color:var(--border-accent)}
+.doc-row__icon{color:var(--ink-muted);flex:none}
+.doc-row__name{font-size:13px;font-weight:500;color:var(--ink-strong);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-row__engine{font-family:var(--font-mono);font-size:10px;color:var(--ink-subtle)}
+.doc-row__del{opacity:0;color:var(--ink-subtle);padding:2px 4px;border-radius:3px;background:transparent;transition:opacity .1s}
+.doc-row:hover .doc-row__del{opacity:1}
+.doc-row__del:hover{color:var(--danger);background:var(--danger-bg)}
+
+/* ── History panel ───────────────────────────────────────────────────────── */
+.hist-panel{display:none;flex-direction:column;height:100%;background:var(--surface)}
+.hist-panel.active{display:flex}
+.hist-row{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--border);font-size:13px}
+.hist-status{font-family:var(--font-mono);font-size:11px;padding:2px 7px;border-radius:var(--radius-full);font-weight:500}
+.hist-status.ok{background:var(--success-bg);color:var(--success-fg)}
+.hist-status.err{background:var(--danger-bg);color:var(--danger-fg)}
+.hist-time{font-family:var(--font-mono);font-size:11px;color:var(--ink-muted);margin-left:auto}
+
+/* ── Log panel ───────────────────────────────────────────────────────────── */
+.log-panel{display:none;flex-direction:column;background:var(--code-bg);height:100%}
+.log-panel.active{display:flex}
+.log-content{flex:1;overflow-y:auto;padding:14px;font-family:var(--font-mono);font-size:12px;
+  color:var(--code-text);line-height:1.6;white-space:pre-wrap;word-break:break-all}
+.log-error-line{color:var(--danger)}
+
+/* ── Monaco editor wrapper ───────────────────────────────────────────────── */
+#monaco-container{flex:1;min-height:0}
+.editor-toolbar{height:36px;display:flex;align-items:center;padding:0 12px;gap:8px;
+  border-bottom:1px solid var(--border);background:var(--surface);flex:none}
+.editor-toolbar__name{font-family:var(--font-mono);font-size:12px;color:var(--ink-muted);flex:1}
+.engine-sel{font-family:var(--font-mono);font-size:12px;padding:3px 8px;
+  border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);
+  color:var(--ink);outline:none;cursor:pointer}
+.engine-sel:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-ring)}
+
+/* ── PDF preview ─────────────────────────────────────────────────────────── */
+.preview-toolbar{height:36px;display:flex;align-items:center;padding:0 12px;gap:8px;
+  border-bottom:1px solid var(--border);background:var(--surface-sunken);flex:none}
+.preview-stage{flex:1;min-height:0;overflow:auto;display:flex;justify-content:center;
+  padding:24px;background:var(--bg-subtle)}
+.pdf-iframe{width:100%;max-width:700px;height:100%;min-height:600px;
+  border:none;border-radius:var(--radius-sm);box-shadow:var(--shadow-xl);background:var(--paper)}
+.preview-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100%;color:var(--ink-subtle);font-size:13px;gap:10px}
+.preview-placeholder svg{opacity:.3}
+
+/* ── Compile states ──────────────────────────────────────────────────────── */
+.pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:11px;
+  padding:2px 8px;border-radius:var(--radius-full);font-weight:500}
+.pill.idle{background:var(--bg-subtle);color:var(--ink-muted)}
+.pill.running{background:var(--warning-bg);color:var(--warning)}
+.pill.success{background:var(--success-bg);color:var(--success-fg)}
+.pill.error{background:var(--danger-bg);color:var(--danger-fg)}
+.dot{width:6px;height:6px;border-radius:50%;flex:none}
+.dot.idle{background:var(--ink-subtle)}
+.dot.running{background:var(--warning);animation:pulse .8s infinite}
+.dot.success{background:var(--success)}
+.dot.error{background:var(--danger)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;
+  border-radius:var(--radius-md);font-size:13px;font-weight:500;transition:background .12s,color .12s,box-shadow .12s;border:1px solid transparent}
+.btn-primary{background:var(--accent);color:var(--accent-on);border-color:var(--accent)}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active)}
+.btn-primary:disabled{opacity:.45;pointer-events:none}
+.btn-ghost{background:transparent;color:var(--ink-muted);border-color:transparent}
+.btn-ghost:hover{background:var(--surface-hover);color:var(--ink)}
+.btn-icon{width:34px;height:34px;padding:0;justify-content:center;border-radius:var(--radius-md)}
+.rail-btn{width:38px;height:38px;border-radius:var(--radius-md);background:transparent;
+  color:var(--ink-muted);display:inline-flex;align-items:center;justify-content:center;
+  transition:background .12s,color .12s;position:relative}
+.rail-btn:hover{background:var(--surface-hover);color:var(--ink)}
+.rail-btn.active{background:var(--accent-subtle-bg);color:var(--accent-subtle-fg)}
+.rail-btn.active::before{content:"";position:absolute;left:-10px;top:9px;bottom:9px;
+  width:3px;border-radius:3px;background:var(--accent)}
+
+/* ── Logo ────────────────────────────────────────────────────────────────── */
+.logo{display:inline-flex;align-items:center;gap:9px}
+.logo-mark{width:26px;height:26px;border-radius:7px}
+.logo-word{font-family:var(--font-serif);font-size:19px;font-weight:600;letter-spacing:-.02em;color:var(--ink-strong)}
+
+/* ── Crumb ───────────────────────────────────────────────────────────────── */
+.crumb{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-muted)}
+.crumb b{color:var(--ink-strong);font-weight:600;font-family:var(--font-mono);font-size:13px}
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+.toasts{position:fixed;right:18px;bottom:18px;z-index:200;display:flex;flex-direction:column;gap:10px}
+.toast{padding:10px 16px;border-radius:var(--radius-lg);font-size:13px;min-width:260px;max-width:380px;
+  display:flex;align-items:flex-start;gap:10px;box-shadow:var(--shadow-lg);
+  animation:slide-in .18s ease-out}
+.toast.success{background:var(--success-bg);color:var(--success-fg);border:1px solid var(--success)}
+.toast.error{background:var(--danger-bg);color:var(--danger-fg);border:1px solid var(--danger)}
+.toast-title{font-weight:600;font-size:13px}
+.toast-msg{font-size:12px;margin-top:2px;font-family:var(--font-mono);opacity:.85}
+@keyframes slide-in{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* ── New doc modal ───────────────────────────────────────────────────────── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:300;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);
+  box-shadow:var(--shadow-xl);padding:24px;width:380px}
+.modal-title{font-family:var(--font-serif);font-size:17px;font-weight:600;color:var(--ink-strong);margin-bottom:16px}
+.input{height:36px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--border);
+  background:var(--surface);color:var(--ink);font-size:13px;outline:none;width:100%}
+.input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-ring)}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+
+/* ── Theme toggle ────────────────────────────────────────────────────────── */
+.theme-toggle{font-size:16px;line-height:1}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Monaco Editor loader -->
+<script>var require = { paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } };</script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+
+<!-- React -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+<script>
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── Icons (inline SVG) ──────────────────────────────────────────────────────
+const Icon = ({ d, size=16 }) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
+  React.createElement('path',{d}));
+const IconFile = ({size=16}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},[
+  React.createElement('path',{key:'p',d:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'}),
+  React.createElement('polyline',{key:'pl',points:'14 2 14 8 20 8'})]);
+const IconLib = ({size=16}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
+  [React.createElement('path',{key:'a',d:'M4 19.5A2.5 2.5 0 0 1 6.5 17H20'}),
+   React.createElement('path',{key:'b',d:'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z'})]);
+const IconHistory = ({size=16}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
+  [React.createElement('polyline',{key:'a',points:'12 8 12 12 14 14'}),
+   React.createElement('path',{key:'b',d:'M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5'})]);
+const IconSettings = ({size=16}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2},
+  [React.createElement('circle',{key:'c',cx:12,cy:12,r:3}),
+   React.createElement('path',{key:'p',d:'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'})]);
+const IconDownload = ({size=16}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
+  [React.createElement('path',{key:'a',d:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'}),
+   React.createElement('polyline',{key:'b',points:'7 10 12 15 17 10'}),
+   React.createElement('line',{key:'c',x1:12,y1:15,x2:12,y2:3})]);
+const IconPlus = ({size=16}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
+  [React.createElement('line',{key:'h',x1:12,y1:5,x2:12,y2:19}),
+   React.createElement('line',{key:'v',x1:5,y1:12,x2:19,y2:12})]);
+const IconTrash = ({size=14}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
+  [React.createElement('polyline',{key:'a',points:'3 6 5 6 21 6'}),
+   React.createElement('path',{key:'b',d:'M19 6l-1 14H6L5 6'}),
+   React.createElement('path',{key:'c',d:'M10 11v6'}),
+   React.createElement('path',{key:'d',d:'M14 11v6'}),
+   React.createElement('path',{key:'e',d:'M9 6V4h6v2'})]);
+const IconSun = ({size=16}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
+  [React.createElement('circle',{key:'c',cx:12,cy:12,r:5}),
+   React.createElement('line',{key:'l1',x1:12,y1:1,x2:12,y2:3}),
+   React.createElement('line',{key:'l2',x1:12,y1:21,x2:12,y2:23}),
+   React.createElement('line',{key:'l3',x1:4.22,y1:4.22,x2:5.64,y2:5.64}),
+   React.createElement('line',{key:'l4',x1:18.36,y1:18.36,x2:19.78,y2:19.78}),
+   React.createElement('line',{key:'l5',x1:1,y1:12,x2:3,y2:12}),
+   React.createElement('line',{key:'l6',x1:21,y1:12,x2:23,y2:12}),
+   React.createElement('line',{key:'l7',x1:4.22,y1:19.78,x2:5.64,y2:18.36}),
+   React.createElement('line',{key:'l8',x1:18.36,y1:5.64,x2:19.78,y2:4.22})]);
+const IconMoon = ({size=16}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
+  React.createElement('path',{d:'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'}));
+
+// ── Default LaTeX template ──────────────────────────────────────────────────
+const DEFAULT_TEX = `\\documentclass[12pt]{article}
+\\usepackage[utf8]{inputenc}
+\\usepackage[T1]{fontenc}
+\\usepackage{amsmath,amssymb}
+\\usepackage{geometry}
+\\geometry{margin=2.5cm}
+
+\\title{Mi Documento}
+\\author{Autor}
+\\date{\\today}
+
+\\begin{document}
+\\maketitle
+
+\\section{Introducción}
+Escribe aquí tu contenido. Tecto usa \\textbf{Tectonic} como motor,
+así que no hay que pelear con TeX Live.
+
+\\section{Fórmulas}
+La identidad de Euler:
+\\begin{equation}
+  e^{i\\pi} + 1 = 0
+\\end{equation}
+
+\\section{Lista de ítems}
+\\begin{itemize}
+  \\item Primer ítem
+  \\item Segundo ítem
+  \\item Tercer ítem
+\\end{itemize}
+
+\\end{document}`;
+
+// ── Tecto App ───────────────────────────────────────────────────────────────
+function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('tecto-theme') || 'light');
+  const [view, setView] = useState('editor'); // editor|library|history|settings
+  const [docs, setDocs] = useState([]);
+  const [currentDoc, setCurrentDoc] = useState(null);
+  const [tex, setTex] = useState(DEFAULT_TEX);
+  const [engine, setEngine] = useState('XeLaTeX');
+  const [status, setStatus] = useState('idle'); // idle|running|success|error
+  const [compileMs, setCompileMs] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState(null);
+  const [log, setLog] = useState('');
+  const [history, setHistory] = useState([]);
+  const [toasts, setToasts] = useState([]);
+  const [showNewDoc, setShowNewDoc] = useState(false);
+  const [newDocName, setNewDocName] = useState('');
+  const monacoRef = useRef(null);
+  const editorRef = useRef(null);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('tecto-theme', theme);
+  }, [theme]);
+
+  useEffect(() => { loadDocs(); }, []);
+
+  const loadDocs = async () => {
+    const r = await fetch('/docs');
+    if (r.ok) setDocs(await r.json());
+  };
+
+  const openDoc = async (doc) => {
+    const r = await fetch(`/docs/${doc.id}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    setCurrentDoc(d);
+    setTex(d.tex);
+    setEngine(d.engine);
+    setStatus('idle');
+    setPdfUrl(null);
+    setLog('');
+    setView('editor');
+    if (editorRef.current) editorRef.current.setValue(d.tex);
+    // load history
+    const hr = await fetch(`/history/${doc.id}`);
+    if (hr.ok) setHistory(await hr.json());
+  };
+
+  const saveDoc = async (newTex, newEngine) => {
+    if (!currentDoc) return;
+    await fetch(`/docs/${currentDoc.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tex: newTex, engine: newEngine }),
+    });
+  };
+
+  const compile = async () => {
+    if (status === 'running') return;
+    const docId = currentDoc?.id ?? 'draft-' + Math.random().toString(36).slice(2);
+    const currentTex = editorRef.current ? editorRef.current.getValue() : tex;
+    setStatus('running');
+    setPdfUrl(null);
+    setLog('');
+    try {
+      const r = await fetch('/compile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: docId, tex: currentTex, engine }),
+      });
+      const data = await r.json();
+      setCompileMs(data.ms);
+      if (data.ok) {
+        setStatus('success');
+        setPdfUrl(data.pdf_url + '?t=' + Date.now());
+        toast('success', 'PDF listo', `${currentDoc?.name ?? 'draft'} · ${data.ms}ms · ${data.kb ?? '?'} KB`);
+        if (currentDoc) {
+          const hr = await fetch(`/history/${currentDoc.id}`);
+          if (hr.ok) setHistory(await hr.json());
+        }
+        if (currentDoc) await saveDoc(currentTex, engine);
+      } else {
+        setStatus('error');
+        setLog(data.log || 'Error desconocido');
+        toast('error', 'Falló la compilación', (data.log || '').split('\n').find(l => l.startsWith('!')) || 'Ver log');
+      }
+    } catch (e) {
+      setStatus('error');
+      setLog(String(e));
+      toast('error', 'Error de red', String(e));
+    }
+  };
+
+  const toast = (type, title, msg) => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts(ts => [...ts, { id, type, title, msg }]);
+    setTimeout(() => setToasts(ts => ts.filter(t => t.id !== id)), 4500);
+  };
+
+  const createDoc = async () => {
+    if (!newDocName.trim()) return;
+    const r = await fetch('/docs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newDocName.trim(), tex: DEFAULT_TEX, engine }),
+    });
+    if (r.ok) {
+      await loadDocs();
+      setShowNewDoc(false);
+      setNewDocName('');
+    }
+  };
+
+  const deleteDoc = async (e, doc) => {
+    e.stopPropagation();
+    await fetch(`/docs/${doc.id}`, { method: 'DELETE' });
+    if (currentDoc?.id === doc.id) { setCurrentDoc(null); setTex(DEFAULT_TEX); }
+    await loadDocs();
+  };
+
+  // Monaco setup
+  useEffect(() => {
+    require(['vs/editor/editor.main'], (monaco) => {
+      monacoRef.current = monaco;
+      monaco.languages.register({ id: 'latex' });
+      monaco.languages.setMonarchTokensProvider('latex', {
+        tokenizer: {
+          root: [
+            [/%.*$/, 'comment'],
+            [/\\[a-zA-Z]+/, 'keyword'],
+            [/\$[^$]*\$/, 'string'],
+            [/\{|\}/, 'delimiter'],
+          ]
+        }
+      });
+      monaco.editor.defineTheme('tecto-light', {
+        base: 'vs', inherit: true,
+        rules: [
+          {token:'keyword', foreground:'c75b12', fontStyle:''},
+          {token:'string',  foreground:'1f8a4c'},
+          {token:'comment', foreground:'9a9087', fontStyle:'italic'},
+          {token:'delimiter',foreground:'6b635b'},
+        ],
+        colors: {
+          'editor.background': '#fbfaf8',
+          'editor.foreground': '#2e2a26',
+          'editorLineNumber.foreground': '#b8afa4',
+          'editorCursor.foreground': '#c75b12',
+          'editor.selectionBackground': '#fbefe3',
+        }
+      });
+      monaco.editor.defineTheme('tecto-dark', {
+        base: 'vs-dark', inherit: true,
+        rules: [
+          {token:'keyword', foreground:'ef9b5e', fontStyle:''},
+          {token:'string',  foreground:'4fc585'},
+          {token:'comment', foreground:'7c7268', fontStyle:'italic'},
+          {token:'delimiter',foreground:'a79d92'},
+        ],
+        colors: {
+          'editor.background': '#1d1916',
+          'editor.foreground': '#e7e2db',
+          'editorLineNumber.foreground': '#6a6056',
+          'editorCursor.foreground': '#ef7a2a',
+          'editor.selectionBackground': '#2c1d12',
+        }
+      });
+      const ed = monaco.editor.create(document.getElementById('monaco-container'), {
+        value: tex,
+        language: 'latex',
+        theme: theme === 'dark' ? 'tecto-dark' : 'tecto-light',
+        fontSize: 13,
+        fontFamily: "'IBM Plex Mono', monospace",
+        lineHeight: 20,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        wordWrap: 'on',
+        padding: { top: 14, bottom: 14 },
+        overviewRulerLanes: 0,
+        renderLineHighlight: 'line',
+      });
+      editorRef.current = ed;
+      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, compile);
+    });
+  }, []);
+
+  // Sync theme with monaco
+  useEffect(() => {
+    if (!monacoRef.current) return;
+    monacoRef.current.editor.setTheme(theme === 'dark' ? 'tecto-dark' : 'tecto-light');
+  }, [theme]);
+
+  // Status pill label
+  const pillLabel = { idle:'En espera', running:'Compilando…', success:'Compilado', error:'Error LaTeX' };
+
+  // Render
+  return React.createElement(React.Fragment, null,
+    // App shell
+    React.createElement('div', { className: 'app' },
+      // Top bar
+      React.createElement('div', { className: 'topbar' },
+        React.createElement('div', { className: 'logo' },
+          React.createElement('svg', { className:'logo-mark', viewBox:'0 0 40 40', fill:'none', xmlns:'http://www.w3.org/2000/svg' },
+            React.createElement('rect', { width:40, height:40, rx:10, fill:'#c75b12' }),
+            React.createElement('text', { x:20, y:28, textAnchor:'middle', fontFamily:'IBM Plex Serif,serif', fontSize:22, fontWeight:600, fill:'#fff' }, 'T')),
+          React.createElement('span', { className: 'logo-word' }, 'Tecto')
+        ),
+        React.createElement('div', { style:{width:1,height:22,background:'var(--border)',margin:'0 6px'} }),
+        React.createElement('div', { className: 'crumb' },
+          'Biblioteca',
+          React.createElement('svg', {width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2}, React.createElement('polyline',{points:'9 18 15 12 9 6'})),
+          currentDoc
+            ? React.createElement('b', null, currentDoc.name)
+            : React.createElement('span', {style:{fontStyle:'italic',color:'var(--ink-subtle)'}}, 'sin documento')
+        ),
+        React.createElement('div', { className: 'topbar__spacer' }),
+        // Engine select
+        React.createElement('select', { className:'engine-sel', value:engine, onChange:e=>{setEngine(e.target.value);if(currentDoc)saveDoc(editorRef.current?.getValue()||tex,e.target.value)} },
+          ['pdfLaTeX','XeLaTeX','LuaLaTeX'].map(e=>React.createElement('option',{key:e,value:e},e))),
+        // Compile button
+        React.createElement('button', { className:'btn btn-primary', onClick:compile, disabled:status==='running',
+          title:'Compilar (⌘↵)'},
+          status==='running'
+            ? React.createElement('div',{className:'dot running'})
+            : React.createElement('svg',{width:14,height:14,viewBox:'0 0 24 24',fill:'currentColor'},React.createElement('polygon',{points:'5 3 19 12 5 21 5 3'})),
+          status==='running' ? 'Compilando…' : 'Compilar'
+        ),
+        // Download
+        pdfUrl && React.createElement('a', { href:pdfUrl, download:`${currentDoc?.name||'tecto'}.pdf`,
+          className:'btn btn-ghost btn-icon', title:'Descargar PDF' },
+          React.createElement(IconDownload)),
+        // Theme
+        React.createElement('button', { className:'btn btn-ghost btn-icon theme-toggle', onClick:()=>setTheme(t=>t==='dark'?'light':'dark') },
+          theme==='dark' ? React.createElement(IconSun) : React.createElement(IconMoon)),
+      ),
+
+      // Body
+      React.createElement('div', { className: 'body' },
+        // Left rail
+        React.createElement('div', { className: 'rail' },
+          [
+            { id:'editor', icon: React.createElement(IconFile), label:'Editor' },
+            { id:'library', icon: React.createElement(IconLib), label:'Biblioteca' },
+            { id:'history', icon: React.createElement(IconHistory), label:'Historial' },
+            { id:'settings', icon: React.createElement(IconSettings), label:'Ajustes' },
+          ].map(({ id, icon, label }) =>
+            React.createElement('button', { key:id, className:`rail-btn${view===id?' active':''}`,
+              title:label, onClick:()=>setView(id) }, icon)
+          )
+        ),
+
+        // Main content
+        React.createElement('div', { className: 'main' },
+          // Editor view
+          React.createElement('div', { className:'split', style:{display:view==='editor'?'flex':'none'} },
+            // Editor pane
+            React.createElement('div', { className: 'editor-pane' },
+              React.createElement('div', { className: 'editor-toolbar' },
+                React.createElement('span', { className:'editor-toolbar__name' },
+                  currentDoc?.name || 'main.tex'),
+              ),
+              React.createElement('div', { id: 'monaco-container' })
+            ),
+            // Preview pane
+            React.createElement('div', { className: 'preview-pane' },
+              React.createElement('div', { className: 'preview-toolbar' },
+                React.createElement('span', { className:`pill ${status}` },
+                  React.createElement('span', { className:`dot ${status}` }),
+                  pillLabel[status],
+                  compileMs && status !== 'idle' ? ` · ${compileMs}ms` : ''
+                ),
+                React.createElement('div', { style:{flex:1} }),
+                pdfUrl && React.createElement('a', { href:pdfUrl, download:`${currentDoc?.name||'tecto'}.pdf`,
+                  className:'btn btn-ghost', style:{height:28,padding:'0 10px',fontSize:12} },
+                  React.createElement(IconDownload,{size:13}), ' Descargar'),
+              ),
+              // PDF or log or placeholder
+              status === 'error'
+                ? React.createElement('div', { className:'log-panel active' },
+                    React.createElement('div', { className:'log-content' },
+                      log.split('\n').map((line, i) =>
+                        React.createElement('div', {key:i, className:line.startsWith('!')?'log-error-line':''}, line || ' ')
+                      )
+                    ))
+                : pdfUrl
+                  ? React.createElement('div', { className:'preview-stage' },
+                      React.createElement('iframe', { className:'pdf-iframe', src:pdfUrl, title:'PDF preview' }))
+                  : React.createElement('div', { className:'preview-stage' },
+                      React.createElement('div', { className:'preview-placeholder' },
+                        React.createElement('svg',{width:48,height:48,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.5,strokeLinecap:'round',strokeLinejoin:'round'},[
+                          React.createElement('path',{key:'a',d:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'}),
+                          React.createElement('polyline',{key:'b',points:'14 2 14 8 20 8'})]),
+                        React.createElement('span',null,'Compila para ver el PDF'),
+                        React.createElement('span',{style:{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--ink-subtle)'}},'⌘ ↵ · Compilar')
+                      ))
+            )
+          ),
+
+          // Library view
+          React.createElement('div', { className:`lib-panel${view==='library'?' active':''}` },
+            React.createElement('div', { className:'lib-header' },
+              React.createElement('span', { className:'lib-title' }, 'Biblioteca'),
+              React.createElement('button', { className:'btn btn-primary', style:{height:30,padding:'0 12px',fontSize:12},
+                onClick:()=>setShowNewDoc(true) },
+                React.createElement(IconPlus,{size:13}), ' Nuevo')
+            ),
+            React.createElement('div', { className:'lib-list' },
+              docs.length === 0
+                ? React.createElement('div', { className:'lib-empty' }, 'Sin documentos. Crea uno nuevo.')
+                : docs.map(doc =>
+                    React.createElement('div', { key:doc.id, className:`doc-row${currentDoc?.id===doc.id?' active':''}`,
+                      onClick:()=>openDoc(doc) },
+                      React.createElement('span', {className:'doc-row__icon'}, React.createElement(IconFile,{size:15})),
+                      React.createElement('span', {className:'doc-row__name'}, doc.name),
+                      React.createElement('span', {className:'doc-row__engine'}, doc.engine),
+                      React.createElement('button', {className:'doc-row__del', onClick:e=>deleteDoc(e,doc),title:'Eliminar'},
+                        React.createElement(IconTrash))
+                    )
+                  )
+            )
+          ),
+
+          // History view
+          React.createElement('div', { className:`hist-panel${view==='history'?' active':''}` },
+            React.createElement('div', { className:'lib-header' },
+              React.createElement('span', { className:'lib-title' },
+                currentDoc ? `Historial — ${currentDoc.name}` : 'Historial')
+            ),
+            history.length === 0
+              ? React.createElement('div', { className:'lib-empty', style:{padding:'32px 16px',textAlign:'center',color:'var(--ink-subtle)',fontSize:13} },
+                  currentDoc ? 'Sin compilaciones aún.' : 'Abre un documento para ver su historial.')
+              : history.map(run =>
+                  React.createElement('div', { key:run.id, className:'hist-row' },
+                    React.createElement('span', {className:`hist-status ${run.status==='success'?'ok':'err'}`},
+                      run.status==='success' ? 'OK' : 'Error'),
+                    React.createElement('span', {style:{fontSize:13,color:'var(--ink-muted)',fontFamily:'var(--font-mono)'}},
+                      new Date(run.created_at).toLocaleString('es', {dateStyle:'short',timeStyle:'short'})),
+                    run.duration_ms && React.createElement('span', {style:{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--ink-subtle)'}},
+                      `${run.duration_ms}ms`),
+                    run.pdf_size_kb && React.createElement('span', {style:{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--ink-subtle)'}},
+                      `${run.pdf_size_kb} KB`),
+                  )
+                )
+          ),
+
+          // Settings view
+          React.createElement('div', { style:{display:view==='settings'?'flex':'none',flexDirection:'column',padding:24,gap:20} },
+            React.createElement('div', {style:{fontFamily:'var(--font-serif)',fontSize:18,fontWeight:600,color:'var(--ink-strong)'}}, 'Ajustes'),
+            React.createElement('div', {style:{display:'flex',flexDirection:'column',gap:8}},
+              React.createElement('label', {style:{fontSize:13,color:'var(--ink-muted)',fontFamily:'var(--font-mono)',letterSpacing:'.04em'}},
+                'MOTOR PREDETERMINADO'),
+              React.createElement('select', {className:'engine-sel',style:{width:200},value:engine,onChange:e=>setEngine(e.target.value)},
+                ['pdfLaTeX','XeLaTeX','LuaLaTeX'].map(e=>React.createElement('option',{key:e,value:e},e)))
+            ),
+            React.createElement('div', {style:{display:'flex',flexDirection:'column',gap:8}},
+              React.createElement('label', {style:{fontSize:13,color:'var(--ink-muted)',fontFamily:'var(--font-mono)',letterSpacing:'.04em'}},
+                'TEMA'),
+              React.createElement('div', {style:{display:'flex',gap:8}},
+                ['light','dark'].map(t=>
+                  React.createElement('button', {key:t,className:`btn ${theme===t?'btn-primary':'btn-ghost'}`,
+                    style:{height:30,padding:'0 14px',fontSize:12}, onClick:()=>setTheme(t)},
+                    t==='light'?'Claro':'Oscuro'))
+              )
+            ),
+            React.createElement('div', {style:{padding:'14px 16px',background:'var(--warning-bg)',borderRadius:'var(--radius-md)',fontSize:12,color:'var(--warning)',fontFamily:'var(--font-mono)'}},
+              'shell-escape — desactivado por defecto. Necesario para minted/TikZ externos. Riesgo si es público.')
+          ),
+
+          // Status bar
+          React.createElement('div', { className:'statusbar' },
+            React.createElement('span', null, 'Tecto'),
+            React.createElement('div', {style:{width:1,height:14,background:'var(--border)'}}),
+            React.createElement('span', null, engine),
+            React.createElement('div', {className:'statusbar__sp'}),
+            currentDoc && React.createElement('span', null, currentDoc.name),
+            compileMs && status!=='idle' && React.createElement('span', null, `${compileMs}ms`),
+          )
+        )
+      )
+    ),
+
+    // Toasts
+    React.createElement('div', { className:'toasts' },
+      toasts.map(t=>
+        React.createElement('div', {key:t.id, className:`toast ${t.type}`},
+          React.createElement('div',null,
+            React.createElement('div',{className:'toast-title'},t.title),
+            React.createElement('div',{className:'toast-msg'},t.msg)
+          )
+        )
+      )
+    ),
+
+    // New doc modal
+    showNewDoc && React.createElement('div', { className:'modal-overlay', onClick:()=>setShowNewDoc(false) },
+      React.createElement('div', { className:'modal', onClick:e=>e.stopPropagation() },
+        React.createElement('div', {className:'modal-title'}, 'Nuevo documento'),
+        React.createElement('input', {className:'input', placeholder:'paper-2026.tex', value:newDocName,
+          onChange:e=>setNewDocName(e.target.value),
+          onKeyDown:e=>{if(e.key==='Enter')createDoc();if(e.key==='Escape')setShowNewDoc(false)},
+          autoFocus:true}),
+        React.createElement('div', {className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowNewDoc(false)},'Cancelar'),
+          React.createElement('button',{className:'btn btn-primary',onClick:createDoc},'Crear')
+        )
+      )
+    )
+  );
+}
+
+// Mount
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+</body>
+</html>
