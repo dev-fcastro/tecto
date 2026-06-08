@@ -525,4 +525,5 @@ async def health():
     return {"ok": True}
 
 # Static files (must be last)
+app.mount("/static", StaticFiles(directory="/app/static"), name="static_files")
 app.mount("/", StaticFiles(directory="/app/static", html=True), name="static")
