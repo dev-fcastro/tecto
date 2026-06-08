@@ -3,7 +3,7 @@
 Este documento detalla los pasos para redesplegar Tecto en el servidor local.
 
 ## Requisitos
-- Acceso SSH al servidor (10.0.0.13).
+- Acceso SSH al servidor (server.synsetsolutions.com).
 - Docker y Docker Compose instalados en el servidor.
 
 ## Pasos de Despliegue Automático
@@ -12,13 +12,13 @@ Puedes usar este comando desde tu máquina local (donde tienes el código):
 
 ```bash
 # Subir archivos estáticos
-sshpass -p '1011' scp -o StrictHostKeyChecking=no -r static/* synset_server@10.0.0.13:/opt/synset/tecto/static/
+sshpass -p '1011' scp -o StrictHostKeyChecking=no -r static/* synset_server@server.synsetsolutions.com:/opt/synset/tecto/static/
 
 # Subir backend
-sshpass -p '1011' scp -o StrictHostKeyChecking=no main.py requirements.txt synset_server@10.0.0.13:/opt/synset/tecto/
+sshpass -p '1011' scp -o StrictHostKeyChecking=no main.py requirements.txt synset_server@server.synsetsolutions.com:/opt/synset/tecto/
 
 # Reconstruir y Reiniciar
-sshpass -p '1011' ssh -o StrictHostKeyChecking=no synset_server@10.0.0.13 "
+sshpass -p '1011' ssh -o StrictHostKeyChecking=no synset_server@server.synsetsolutions.com "
   cd /opt/synset/tecto && 
   docker build -t synset-tecto:latest . && 
   cd /opt/synset/lab && 
