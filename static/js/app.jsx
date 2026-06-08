@@ -131,6 +131,7 @@ function LeftRail({ view, setView, onLogout }) {
     { id: 'docs', label: 'Documentos', icon: I.Folder },
     { id: 'templates', label: 'Plantillas', icon: I.Layout },
     { id: 'assets', label: 'Assets', icon: I.Image },
+    { id: 'docview', label: 'Documentación', icon: I.FileText },
     { id: 'editor', label: 'Editor de plantilla', icon: I.PanelLeft },
   ];
   return (
@@ -876,7 +877,13 @@ const BRAND = {
 function buildTemplateData(formData) {
   const { totals } = window.TectoCorp;
   const t = totals(formData);
-  const items = [...formData.items];
+  const items = [
+    { id: 'docs', label: 'Documentos', icon: I.Folder },
+    { id: 'templates', label: 'Plantillas', icon: I.Layout },
+    { id: 'assets', label: 'Assets', icon: I.Image },
+    { id: 'docview', label: 'Documentación', icon: I.FileText },
+    { id: 'editor', label: 'Editor de plantilla', icon: I.PanelLeft },
+  ];
   while (items.length < 3) items.push({ desc: '', qty: 0, price: 0 });
   const fmt = (n) => n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return {
@@ -1008,6 +1015,7 @@ function EditorWorkspace({ status, onCompile, onDownload, engine, setEngine }) {
 
 const CRUMBS = {
   docs: ['Documentos'],
+  docview: ['Documentación'],
   generator: ['Documentos', 'Nueva cotización'],
   templates: ['Plantillas'],
   assets: ['Assets'],
@@ -1084,6 +1092,7 @@ function App() {
 
   const { TopBar, LeftRail, StatusBar } = window.TectoChrome;
   const { Settings } = window.TectoScreens;
+  const { Docs } = window.TectoDocs;
   const { Documentos, Plantillas, Assets } = window.TectoWorkspace;
   const { Generator } = window.TectoGenerator;
   const { TemplateWorkspace } = window.TectoTemplate;
@@ -1098,6 +1107,7 @@ function App() {
         <LeftRail view={view} setView={goView} onLogout={() => setAuthed(false)} />
         <div className="tk-main">
           {view === 'docs' && <Documentos onNew={newDoc} onOpenDoc={openDoc} />}
+          {view === 'docview' && <Docs />}
           {view === 'generator' && (
             <Generator data={data} setData={setData} status={status} pdfUrl={pdfUrl}
               onCompile={compile}

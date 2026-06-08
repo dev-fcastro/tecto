@@ -386,6 +386,30 @@ async def download_pdf(doc_id: str):
         raise HTTPException(404, "PDF no encontrado")
     return FileResponse(path, media_type="application/pdf", filename=f"{doc_id}.pdf")
 
+
+import aiofiles
+from fastapi import UploadFile, File
+
+ASSETS_DIR = Path('/opt/synset/tecto/assets')
+ASSETS_DIR.mkdir(exist_ok=True, parents=True)
+
+@app.post('/assets')
+async def upload_asset(file: UploadFile = File(...)):
+    file_path = ASSETS_DIR / file.filename
+    async with aiofiles.open(file_path, 'wb') as out_file:
+        content = await file.read()
+        await out_file.write(content)
+    return {'filename': file.filename, 'status': 'success'}
+
+@app.get('/assets')
+async def list_assets():
+    assets = []
+    for f in ASSETS_DIR.glob('*'):
+        if f.is_file():
+            assets.append({'name': f.name, 'size': f.stat().st_size})
+    return assets
+
+
 # ── Templates ─────────────────────────────────────────────────────────────────
 @app.get("/templates")
 async def list_templates():
