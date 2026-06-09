@@ -1034,6 +1034,92 @@ Puedes usar cualquier paquete que Tectonic soporte.
   document.head.appendChild(el);
 })();
 
+// ── NewDocModal — asks for name + client before creating from template ────────
+(function injectModalCSS() {
+  if (document.getElementById('tecto-modal-css')) return;
+  const css = `
+.tk-modal-ov { position:fixed;inset:0;background:rgba(0,0,0,.38);z-index:400;display:flex;align-items:center;justify-content:center; }
+.tk-modal { background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-xl);padding:26px;width:420px;display:flex;flex-direction:column;gap:14px; }
+.tk-modal__title { font-family:var(--font-serif);font-size:18px;font-weight:600;color:var(--ink-strong); }
+.tk-modal__field { display:flex;flex-direction:column;gap:5px; }
+.tk-modal__label { font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted); }
+.tk-modal__input { height:36px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--border-strong);background:var(--surface);color:var(--ink);font-family:var(--font-sans);font-size:13px;outline:none;width:100%; }
+.tk-modal__input:focus { border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-ring); }
+.tk-modal__actions { display:flex;justify-content:flex-end;gap:8px;margin-top:4px; }
+`;
+  const el = document.createElement('style');
+  el.id = 'tecto-modal-css';
+  el.textContent = css;
+  document.head.appendChild(el);
+})();
+
+const NEW_CLIENT_SENTINEL = '__new__';
+
+function NewDocModal({ templateName, clients, onClose, onCreate }) {
+  const [docName, setDocName] = React.useState('');
+  const [clientId, setClientId] = React.useState(clients.length > 0 ? clients[0].id : NEW_CLIENT_SENTINEL);
+  const [newClientName, setNewClientName] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const { Button } = window.TectoDS;
+  const isNew = clientId === NEW_CLIENT_SENTINEL;
+
+  const canSubmit = docName.trim() && (!isNew || newClientName.trim());
+
+  const handleCreate = async () => {
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      await onCreate({
+        name: docName.trim(),
+        clientId: isNew ? null : clientId,
+        newClientName: isNew ? newClientName.trim() : null,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="tk-modal-ov" onClick={onClose}>
+      <div className="tk-modal" onClick={e => e.stopPropagation()}>
+        <div className="tk-modal__title">Nuevo documento — {templateName}</div>
+
+        <div className="tk-modal__field">
+          <label className="tk-modal__label">Nombre del documento</label>
+          <input className="tk-modal__input" placeholder="cotizacion-acme-2026"
+            value={docName} onChange={e => setDocName(e.target.value)} autoFocus
+            onKeyDown={e => { if (e.key === 'Enter' && canSubmit) handleCreate(); if (e.key === 'Escape') onClose(); }} />
+        </div>
+
+        <div className="tk-modal__field">
+          <label className="tk-modal__label">Cliente</label>
+          <select className="tk-modal__input" value={clientId} onChange={e => setClientId(e.target.value)}>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <option value={NEW_CLIENT_SENTINEL}>+ Nuevo cliente…</option>
+          </select>
+        </div>
+
+        {isNew && (
+          <div className="tk-modal__field">
+            <label className="tk-modal__label">Nombre del nuevo cliente</label>
+            <input className="tk-modal__input" placeholder="Empresa S.A."
+              value={newClientName} onChange={e => setNewClientName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && canSubmit) handleCreate(); if (e.key === 'Escape') onClose(); }} />
+          </div>
+        )}
+
+        <div className="tk-modal__actions">
+          <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" size="sm" onClick={handleCreate}
+            loading={saving} disabled={!canSubmit}>
+            {saving ? 'Creando…' : 'Crear documento'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Field groups per template ─────────────────────────────────────────────────
 const FIELD_GROUPS = {
   'tpl-cotizacion': [
@@ -2080,11 +2166,13 @@ function App() {
   // Generator
   const [status, setStatus] = React.useState('idle');
   const [templates, setTemplates] = React.useState([]);
+  const [clients, setClients] = React.useState([]);
   const [currentTemplate, setCurrentTemplate] = React.useState(null);
   const [formData, setFormData] = React.useState({});
   const [docs, setDocs] = React.useState([]);
   const [pdfUrl, setPdfUrl] = React.useState(null);
   const [currentDocId, setCurrentDocId] = React.useState(null);
+  const [pendingTemplate, setPendingTemplate] = React.useState(null); // for NewDocModal
 
   // Free editor
   const [freeTeX, setFreeTeX] = React.useState(FREE_STARTER_TEX);
@@ -2118,7 +2206,7 @@ function App() {
   }, []);
 
   React.useEffect(() => {
-    if (user) { loadTemplates(); loadDocs(); loadAssets(); }
+    if (user) { loadTemplates(); loadDocs(); loadAssets(); loadClients(); }
   }, [user]);
 
   // ── apiFetch ──────────────────────────────────────────────────────────────
@@ -2166,6 +2254,9 @@ function App() {
   const loadAssets = async () => {
     try { const r = await apiFetch('/assets'); if (r.ok) setAssets(await r.json()); } catch(_) {}
   };
+  const loadClients = async () => {
+    try { const r = await apiFetch('/clients'); if (r.ok) setClients(await r.json()); } catch(_) {}
+  };
 
   // ── Toast helper ──────────────────────────────────────────────────────────
   const pushToast = (t) => {
@@ -2174,20 +2265,40 @@ function App() {
     setTimeout(() => setToasts(ts => ts.filter(x => x.id !== id)), 4500);
   };
 
-  // ── Template selection ────────────────────────────────────────────────────
+  // ── Template selection — shows NewDocModal first ─────────────────────────
   const selectTemplate = async (tplId) => {
     try {
       const r = await apiFetch(`/templates/${tplId}`);
       if (!r.ok) throw new Error();
       const tpl = await r.json();
-      setCurrentTemplate(tpl);
-      const defaults = {};
-      for (const f of tpl.fields || []) defaults[f.key] = f.default || '';
-      setFormData(defaults);
-      setPdfUrl(null); setStatus('idle');
-      setCurrentDocId('doc-' + Math.random().toString(36).slice(2));
-      setView('generator');
+      setPendingTemplate(tpl);
     } catch(_) { pushToast({ tone:'danger', title:'Error', msg:'No se pudo cargar la plantilla.' }); }
+  };
+
+  // Called by NewDocModal on confirm
+  const handleNewDocCreate = async ({ name, clientId, newClientName }) => {
+    if (!pendingTemplate) return;
+    try {
+      let resolvedClientId = clientId;
+      if (!clientId && newClientName) {
+        const cr = await apiFetch('/clients', { method:'POST', body: JSON.stringify({ name: newClientName }) });
+        if (cr.ok) { const c = await cr.json(); resolvedClientId = c.id; loadClients(); }
+      }
+      const defaults = {};
+      for (const f of pendingTemplate.fields || []) defaults[f.key] = f.default || '';
+      const dr = await apiFetch('/docs', { method:'POST', body: JSON.stringify({
+        template_id: pendingTemplate.id, name, data: defaults, engine, client_id: resolvedClientId,
+      })});
+      if (!dr.ok) throw new Error('No se pudo crear el documento');
+      const doc = await dr.json();
+      setCurrentTemplate(pendingTemplate);
+      setFormData(defaults);
+      setCurrentDocId(doc.id);
+      setPdfUrl(null); setStatus('idle');
+      setPendingTemplate(null);
+      setView('generator');
+      loadDocs();
+    } catch(e) { pushToast({ tone:'danger', title:'Error', msg: String(e) }); }
   };
 
   // ── Compile (generator) ───────────────────────────────────────────────────
@@ -2204,6 +2315,10 @@ function App() {
         setPdfUrl(c.pdf_url + '?t=' + Date.now());
         setStatus('success');
         pushToast({ tone:'success', title:'PDF listo', msg:`Tectonic · ${c.ms}ms` });
+        // Save form data back to the document so client_name persists
+        if (docId) {
+          apiFetch(`/docs/${docId}`, { method:'PUT', body: JSON.stringify({ data: formData }) }).catch(()=>{});
+        }
         loadDocs();
       } else {
         setStatus('error');
@@ -2446,6 +2561,14 @@ function App() {
           </Toast>
         ))}
       </div>
+      {pendingTemplate && (
+        <NewDocModal
+          templateName={pendingTemplate.name}
+          clients={clients}
+          onClose={() => setPendingTemplate(null)}
+          onCreate={handleNewDocCreate}
+        />
+      )}
     </div>
   );
 }

@@ -49,7 +49,7 @@
 html,body,#root{height:100%;overflow:hidden}
 body{font-family:var(--font-sans);font-size:14px;background:var(--bg);color:var(--ink)}
 button{font-family:inherit;cursor:pointer;border:none}
-input{font-family:inherit}
+input,select{font-family:inherit}
 a{color:inherit;text-decoration:none}
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
@@ -80,9 +80,11 @@ a{color:inherit;text-decoration:none}
 .doc-row:hover{background:var(--surface-hover)}
 .doc-row.active{background:var(--accent-subtle-bg);border-color:var(--border-accent)}
 .doc-row__icon{color:var(--ink-muted);flex:none}
-.doc-row__name{font-size:13px;font-weight:500;color:var(--ink-strong);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.doc-row__engine{font-family:var(--font-mono);font-size:10px;color:var(--ink-subtle)}
-.doc-row__del{opacity:0;color:var(--ink-subtle);padding:2px 4px;border-radius:3px;background:transparent;transition:opacity .1s}
+.doc-row__info{flex:1;min-width:0}
+.doc-row__name{font-size:13px;font-weight:500;color:var(--ink-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-row__meta{font-size:11px;color:var(--ink-subtle);font-family:var(--font-mono);display:flex;gap:8px;margin-top:2px}
+.doc-row__client{color:var(--accent-subtle-fg)}
+.doc-row__del{opacity:0;color:var(--ink-subtle);padding:2px 4px;border-radius:3px;background:transparent;transition:opacity .1s;flex:none}
 .doc-row:hover .doc-row__del{opacity:1}
 .doc-row__del:hover{color:var(--danger);background:var(--danger-bg)}
 
@@ -178,12 +180,16 @@ a{color:inherit;text-decoration:none}
 /* ── New doc modal ───────────────────────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:300;display:flex;align-items:center;justify-content:center}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);
-  box-shadow:var(--shadow-xl);padding:24px;width:380px}
+  box-shadow:var(--shadow-xl);padding:24px;width:420px}
 .modal-title{font-family:var(--font-serif);font-size:17px;font-weight:600;color:var(--ink-strong);margin-bottom:16px}
+.modal-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.modal-label{font-size:11px;font-family:var(--font-mono);letter-spacing:.05em;color:var(--ink-muted);text-transform:uppercase}
 .input{height:36px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--border);
   background:var(--surface);color:var(--ink);font-size:13px;outline:none;width:100%}
 .input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-ring)}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.client-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-family:var(--font-mono);
+  padding:1px 6px;border-radius:var(--radius-full);background:var(--accent-subtle-bg);color:var(--accent-subtle-fg)}
 
 /* ── Theme toggle ────────────────────────────────────────────────────────── */
 .theme-toggle{font-size:16px;line-height:1}
@@ -243,6 +249,9 @@ const IconSun = ({size=16}) => React.createElement('svg',{width:size,height:size
    React.createElement('line',{key:'l8',x1:18.36,y1:5.64,x2:19.78,y2:4.22})]);
 const IconMoon = ({size=16}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
   React.createElement('path',{d:'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'}));
+const IconUser = ({size=14}) => React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
+  [React.createElement('path',{key:'a',d:'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'}),
+   React.createElement('circle',{key:'b',cx:12,cy:7,r:4})]);
 
 // ── Default LaTeX template ──────────────────────────────────────────────────
 const DEFAULT_TEX = `\\documentclass[12pt]{article}
@@ -278,22 +287,101 @@ La identidad de Euler:
 
 \\end{document}`;
 
+// ── New Doc Modal ───────────────────────────────────────────────────────────
+const NEW_CLIENT_VALUE = '__new__';
+
+function NewDocModal({ clients, onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [clientId, setClientId] = useState(clients.length > 0 ? clients[0].id : NEW_CLIENT_VALUE);
+  const [newClientName, setNewClientName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const isNew = clientId === NEW_CLIENT_VALUE;
+
+  const handleCreate = async () => {
+    if (!name.trim()) return;
+    if (isNew && !newClientName.trim()) return;
+    setSaving(true);
+    try {
+      let resolvedClientId = isNew ? null : clientId;
+      if (isNew) {
+        const cr = await fetch('/clients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newClientName.trim() }),
+        });
+        if (cr.ok) {
+          const c = await cr.json();
+          resolvedClientId = c.id;
+        }
+      }
+      await onCreate(name.trim(), resolvedClientId);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return React.createElement('div', { className:'modal-overlay', onClick:onClose },
+    React.createElement('div', { className:'modal', onClick:e=>e.stopPropagation() },
+      React.createElement('div', {className:'modal-title'}, 'Nuevo documento'),
+
+      React.createElement('div', {className:'modal-field'},
+        React.createElement('label', {className:'modal-label'}, 'Nombre del documento'),
+        React.createElement('input', {
+          className:'input', placeholder:'informe-2026.tex', value:name,
+          onChange:e=>setName(e.target.value),
+          onKeyDown:e=>{if(e.key==='Enter')handleCreate();if(e.key==='Escape')onClose()},
+          autoFocus:true
+        })
+      ),
+
+      React.createElement('div', {className:'modal-field'},
+        React.createElement('label', {className:'modal-label'}, 'Cliente'),
+        React.createElement('select', {
+          className:'input', value:clientId,
+          onChange:e=>setClientId(e.target.value)
+        },
+          clients.map(c => React.createElement('option',{key:c.id,value:c.id}, c.name)),
+          React.createElement('option',{value:NEW_CLIENT_VALUE}, '+ Nuevo cliente…')
+        )
+      ),
+
+      isNew && React.createElement('div', {className:'modal-field'},
+        React.createElement('label', {className:'modal-label'}, 'Nombre del nuevo cliente'),
+        React.createElement('input', {
+          className:'input', placeholder:'Empresa S.A.', value:newClientName,
+          onChange:e=>setNewClientName(e.target.value),
+          onKeyDown:e=>{if(e.key==='Enter')handleCreate();if(e.key==='Escape')onClose()}
+        })
+      ),
+
+      React.createElement('div', {className:'modal-actions'},
+        React.createElement('button',{className:'btn btn-ghost',onClick:onClose},'Cancelar'),
+        React.createElement('button',{
+          className:'btn btn-primary',onClick:handleCreate,
+          disabled:saving||!name.trim()||(isNew&&!newClientName.trim())
+        }, saving?'Creando…':'Crear')
+      )
+    )
+  );
+}
+
 // ── Tecto App ───────────────────────────────────────────────────────────────
 function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('tecto-theme') || 'light');
-  const [view, setView] = useState('editor'); // editor|library|history|settings
+  const [view, setView] = useState('editor');
   const [docs, setDocs] = useState([]);
+  const [clients, setClients] = useState([]);
   const [currentDoc, setCurrentDoc] = useState(null);
   const [tex, setTex] = useState(DEFAULT_TEX);
   const [engine, setEngine] = useState('XeLaTeX');
-  const [status, setStatus] = useState('idle'); // idle|running|success|error
+  const [status, setStatus] = useState('idle');
   const [compileMs, setCompileMs] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [log, setLog] = useState('');
   const [history, setHistory] = useState([]);
   const [toasts, setToasts] = useState([]);
   const [showNewDoc, setShowNewDoc] = useState(false);
-  const [newDocName, setNewDocName] = useState('');
   const monacoRef = useRef(null);
   const editorRef = useRef(null);
 
@@ -302,11 +390,16 @@ function App() {
     localStorage.setItem('tecto-theme', theme);
   }, [theme]);
 
-  useEffect(() => { loadDocs(); }, []);
+  useEffect(() => { loadDocs(); loadClients(); }, []);
 
   const loadDocs = async () => {
     const r = await fetch('/docs');
     if (r.ok) setDocs(await r.json());
+  };
+
+  const loadClients = async () => {
+    const r = await fetch('/clients');
+    if (r.ok) setClients(await r.json());
   };
 
   const openDoc = async (doc) => {
@@ -321,7 +414,6 @@ function App() {
     setLog('');
     setView('editor');
     if (editorRef.current) editorRef.current.setValue(d.tex);
-    // load history
     const hr = await fetch(`/history/${doc.id}`);
     if (hr.ok) setHistory(await hr.json());
   };
@@ -337,7 +429,12 @@ function App() {
 
   const compile = async () => {
     if (status === 'running') return;
-    const docId = currentDoc?.id ?? 'draft-' + Math.random().toString(36).slice(2);
+    if (!currentDoc) {
+      toast('error', 'Sin documento', 'Crea o abre un documento antes de compilar');
+      setView('library');
+      setShowNewDoc(true);
+      return;
+    }
     const currentTex = editorRef.current ? editorRef.current.getValue() : tex;
     setStatus('running');
     setPdfUrl(null);
@@ -346,19 +443,17 @@ function App() {
       const r = await fetch('/compile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: docId, tex: currentTex, engine }),
+        body: JSON.stringify({ id: currentDoc.id, tex: currentTex, engine }),
       });
       const data = await r.json();
       setCompileMs(data.ms);
       if (data.ok) {
         setStatus('success');
         setPdfUrl(data.pdf_url + '?t=' + Date.now());
-        toast('success', 'PDF listo', `${currentDoc?.name ?? 'draft'} · ${data.ms}ms · ${data.kb ?? '?'} KB`);
-        if (currentDoc) {
-          const hr = await fetch(`/history/${currentDoc.id}`);
-          if (hr.ok) setHistory(await hr.json());
-        }
-        if (currentDoc) await saveDoc(currentTex, engine);
+        toast('success', 'PDF listo', `${currentDoc.name} · ${data.ms}ms · ${data.kb ?? '?'} KB`);
+        await saveDoc(currentTex, engine);
+        const hr = await fetch(`/history/${currentDoc.id}`);
+        if (hr.ok) setHistory(await hr.json());
       } else {
         setStatus('error');
         setLog(data.log || 'Error desconocido');
@@ -377,24 +472,26 @@ function App() {
     setTimeout(() => setToasts(ts => ts.filter(t => t.id !== id)), 4500);
   };
 
-  const createDoc = async () => {
-    if (!newDocName.trim()) return;
+  const handleCreateDoc = async (name, clientId) => {
     const r = await fetch('/docs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newDocName.trim(), tex: DEFAULT_TEX, engine }),
+      body: JSON.stringify({ name, tex: DEFAULT_TEX, engine, client_id: clientId }),
     });
     if (r.ok) {
+      const newDoc = await r.json();
       await loadDocs();
+      await loadClients();
       setShowNewDoc(false);
-      setNewDocName('');
+      // Open the new document immediately
+      await openDoc(newDoc);
     }
   };
 
   const deleteDoc = async (e, doc) => {
     e.stopPropagation();
     await fetch(`/docs/${doc.id}`, { method: 'DELETE' });
-    if (currentDoc?.id === doc.id) { setCurrentDoc(null); setTex(DEFAULT_TEX); }
+    if (currentDoc?.id === doc.id) { setCurrentDoc(null); setTex(DEFAULT_TEX); setPdfUrl(null); }
     await loadDocs();
   };
 
@@ -464,18 +561,14 @@ function App() {
     });
   }, []);
 
-  // Sync theme with monaco
   useEffect(() => {
     if (!monacoRef.current) return;
     monacoRef.current.editor.setTheme(theme === 'dark' ? 'tecto-dark' : 'tecto-light');
   }, [theme]);
 
-  // Status pill label
   const pillLabel = { idle:'En espera', running:'Compilando…', success:'Compilado', error:'Error LaTeX' };
 
-  // Render
   return React.createElement(React.Fragment, null,
-    // App shell
     React.createElement('div', { className: 'app' },
       // Top bar
       React.createElement('div', { className: 'topbar' },
@@ -490,14 +583,16 @@ function App() {
           'Biblioteca',
           React.createElement('svg', {width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2}, React.createElement('polyline',{points:'9 18 15 12 9 6'})),
           currentDoc
-            ? React.createElement('b', null, currentDoc.name)
+            ? React.createElement(React.Fragment, null,
+                currentDoc.client_name && React.createElement('span', {className:'client-badge'},
+                  React.createElement(IconUser,{size:10}), currentDoc.client_name),
+                React.createElement('b', null, currentDoc.name)
+              )
             : React.createElement('span', {style:{fontStyle:'italic',color:'var(--ink-subtle)'}}, 'sin documento')
         ),
         React.createElement('div', { className: 'topbar__spacer' }),
-        // Engine select
         React.createElement('select', { className:'engine-sel', value:engine, onChange:e=>{setEngine(e.target.value);if(currentDoc)saveDoc(editorRef.current?.getValue()||tex,e.target.value)} },
           ['pdfLaTeX','XeLaTeX','LuaLaTeX'].map(e=>React.createElement('option',{key:e,value:e},e))),
-        // Compile button
         React.createElement('button', { className:'btn btn-primary', onClick:compile, disabled:status==='running',
           title:'Compilar (⌘↵)'},
           status==='running'
@@ -505,18 +600,15 @@ function App() {
             : React.createElement('svg',{width:14,height:14,viewBox:'0 0 24 24',fill:'currentColor'},React.createElement('polygon',{points:'5 3 19 12 5 21 5 3'})),
           status==='running' ? 'Compilando…' : 'Compilar'
         ),
-        // Download
         pdfUrl && React.createElement('a', { href:pdfUrl, download:`${currentDoc?.name||'tecto'}.pdf`,
           className:'btn btn-ghost btn-icon', title:'Descargar PDF' },
           React.createElement(IconDownload)),
-        // Theme
         React.createElement('button', { className:'btn btn-ghost btn-icon theme-toggle', onClick:()=>setTheme(t=>t==='dark'?'light':'dark') },
           theme==='dark' ? React.createElement(IconSun) : React.createElement(IconMoon)),
       ),
 
       // Body
       React.createElement('div', { className: 'body' },
-        // Left rail
         React.createElement('div', { className: 'rail' },
           [
             { id:'editor', icon: React.createElement(IconFile), label:'Editor' },
@@ -529,11 +621,9 @@ function App() {
           )
         ),
 
-        // Main content
         React.createElement('div', { className: 'main' },
           // Editor view
           React.createElement('div', { className:'split', style:{display:view==='editor'?'flex':'none'} },
-            // Editor pane
             React.createElement('div', { className: 'editor-pane' },
               React.createElement('div', { className: 'editor-toolbar' },
                 React.createElement('span', { className:'editor-toolbar__name' },
@@ -541,7 +631,6 @@ function App() {
               ),
               React.createElement('div', { id: 'monaco-container' })
             ),
-            // Preview pane
             React.createElement('div', { className: 'preview-pane' },
               React.createElement('div', { className: 'preview-toolbar' },
                 React.createElement('span', { className:`pill ${status}` },
@@ -554,7 +643,6 @@ function App() {
                   className:'btn btn-ghost', style:{height:28,padding:'0 10px',fontSize:12} },
                   React.createElement(IconDownload,{size:13}), ' Descargar'),
               ),
-              // PDF or log or placeholder
               status === 'error'
                 ? React.createElement('div', { className:'log-panel active' },
                     React.createElement('div', { className:'log-content' },
@@ -591,8 +679,13 @@ function App() {
                     React.createElement('div', { key:doc.id, className:`doc-row${currentDoc?.id===doc.id?' active':''}`,
                       onClick:()=>openDoc(doc) },
                       React.createElement('span', {className:'doc-row__icon'}, React.createElement(IconFile,{size:15})),
-                      React.createElement('span', {className:'doc-row__name'}, doc.name),
-                      React.createElement('span', {className:'doc-row__engine'}, doc.engine),
+                      React.createElement('div', {className:'doc-row__info'},
+                        React.createElement('div', {className:'doc-row__name'}, doc.name),
+                        React.createElement('div', {className:'doc-row__meta'},
+                          doc.client_name && React.createElement('span', {className:'doc-row__client'}, doc.client_name),
+                          React.createElement('span', null, doc.engine)
+                        )
+                      ),
                       React.createElement('button', {className:'doc-row__del', onClick:e=>deleteDoc(e,doc),title:'Eliminar'},
                         React.createElement(IconTrash))
                     )
@@ -651,6 +744,10 @@ function App() {
             React.createElement('span', null, 'Tecto'),
             React.createElement('div', {style:{width:1,height:14,background:'var(--border)'}}),
             React.createElement('span', null, engine),
+            currentDoc?.client_name && React.createElement(React.Fragment,null,
+              React.createElement('div', {style:{width:1,height:14,background:'var(--border)'}}),
+              React.createElement('span', null, currentDoc.client_name)
+            ),
             React.createElement('div', {className:'statusbar__sp'}),
             currentDoc && React.createElement('span', null, currentDoc.name),
             compileMs && status!=='idle' && React.createElement('span', null, `${compileMs}ms`),
@@ -672,23 +769,14 @@ function App() {
     ),
 
     // New doc modal
-    showNewDoc && React.createElement('div', { className:'modal-overlay', onClick:()=>setShowNewDoc(false) },
-      React.createElement('div', { className:'modal', onClick:e=>e.stopPropagation() },
-        React.createElement('div', {className:'modal-title'}, 'Nuevo documento'),
-        React.createElement('input', {className:'input', placeholder:'paper-2026.tex', value:newDocName,
-          onChange:e=>setNewDocName(e.target.value),
-          onKeyDown:e=>{if(e.key==='Enter')createDoc();if(e.key==='Escape')setShowNewDoc(false)},
-          autoFocus:true}),
-        React.createElement('div', {className:'modal-actions'},
-          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowNewDoc(false)},'Cancelar'),
-          React.createElement('button',{className:'btn btn-primary',onClick:createDoc},'Crear')
-        )
-      )
-    )
+    showNewDoc && React.createElement(NewDocModal, {
+      clients,
+      onClose:()=>setShowNewDoc(false),
+      onCreate:handleCreateDoc
+    })
   );
 }
 
-// Mount
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
 </script>
 </body>

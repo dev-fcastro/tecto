@@ -23,9 +23,9 @@ DB_URL = os.environ.get(
 SECRET_KEY = os.environ.get("SECRET_KEY", "tecto-dev-secret-change-in-prod-2026")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 72
-PDF_DIR = Path("/tmp/tecto_pdfs")
-PDF_DIR.mkdir(exist_ok=True)
-ASSETS_DIR = Path("/app/static/assets")  # inside volume-mounted dir → persists rebuilds
+PDF_DIR = Path("/app/pdfs")
+PDF_DIR.mkdir(exist_ok=True, parents=True)
+ASSETS_DIR = Path("/app/assets")  # separate persistent volume — NOT inside /app/static
 ASSETS_DIR.mkdir(exist_ok=True, parents=True)
 
 app = FastAPI(title="Tecto API", docs_url="/api/docs", redoc_url="/api/redoc")
@@ -68,6 +68,14 @@ async def startup():
     global pool
     pool = await asyncpg.create_pool(DB_URL)
     async with pool.acquire() as conn:
+        # Clients table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS clients (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              name TEXT NOT NULL,
+              created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
         # Users table
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -108,6 +116,7 @@ async def startup():
             )
         """)
         await conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL")
+        await conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clients(id) ON DELETE SET NULL")
         # Compile runs
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS compile_runs (
@@ -417,6 +426,27 @@ async def seed_templates():
                 tpl["icon"], tpl["color"],
                 tpl["tex_template"], json.dumps(tpl["fields"]))
 
+# ── Clients ───────────────────────────────────────────────────────────────────
+class ClientCreate(BaseModel):
+    name: str
+
+@app.get("/clients")
+async def list_clients(user=Depends(get_current_user)):
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT id, name, created_at FROM clients ORDER BY name")
+    return [dict(r) for r in rows]
+
+@app.post("/clients")
+async def create_client(body: ClientCreate, user=Depends(get_current_user)):
+    if not body.name.strip():
+        raise HTTPException(400, "El nombre no puede estar vacío")
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "INSERT INTO clients (name) VALUES ($1) RETURNING id, name",
+            body.name.strip()
+        )
+    return dict(row)
+
 # ── Auth endpoints ────────────────────────────────────────────────────────────
 class RegisterBody(BaseModel):
     email: str
@@ -603,7 +633,7 @@ async def upload_asset(file: UploadFile = File(...), user=Depends(get_current_us
     return {"name": name, "original": file.filename, "size": len(content), "ok": True}
 
 @app.get("/assets/{filename}")
-async def serve_asset(filename: str):
+async def serve_asset(filename: str, user=Depends(get_current_user)):
     path = ASSETS_DIR / filename
     if not path.exists():
         raise HTTPException(404, "Asset no encontrado")
@@ -692,20 +722,25 @@ class DocFromTemplate(BaseModel):
     name: str
     data: dict
     engine: str = "XeLaTeX"
+    client_id: Optional[str] = None
 
 class DocUpdate(BaseModel):
     name: Optional[str] = None
     data: Optional[dict] = None
     tex: Optional[str] = None
     engine: Optional[str] = None
+    client_id: Optional[str] = None
 
 @app.get("/docs")
 async def list_docs(user=Depends(get_current_user)):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT d.id, d.name, d.engine, d.updated_at, d.data, "
+            "SELECT d.id, d.name, d.engine, d.updated_at, d.data, d.client_id, "
+            "c.name as client_name, "
             "t.name as template_name, t.id as template_id, t.category, t.color "
-            "FROM documents d LEFT JOIN templates t ON d.template_id=t.id "
+            "FROM documents d "
+            "LEFT JOIN templates t ON d.template_id=t.id "
+            "LEFT JOIN clients c ON c.id = d.client_id "
             "ORDER BY d.updated_at DESC")
     result = []
     for r in rows:
@@ -714,10 +749,12 @@ async def list_docs(user=Depends(get_current_user)):
             d["updated_at"] = d["updated_at"].isoformat()
         raw = d.get("data") or {}
         data = json.loads(raw) if isinstance(raw, str) else raw
-        # Extract client name from data for folder grouping
-        client = (data.get("cliente_nombre") or data.get("cliente") or
-                  data.get("proyecto_nombre") or data.get("proveedor_nombre") or "")
-        d["client_name"] = client.strip()
+        # Use explicit client_name from clients table, fallback to data fields
+        if not d.get("client_name"):
+            d["client_name"] = (
+                data.get("cliente_nombre") or data.get("cliente") or
+                data.get("proyecto_nombre") or data.get("proveedor_nombre") or ""
+            ).strip()
         d.pop("data", None)
         result.append(d)
     return result
@@ -734,10 +771,11 @@ async def create_doc_from_template(body: DocFromTemplate, user=Depends(get_curre
         merged = {**defaults, **body.data}
         tex = render_template(tpl["tex_template"], merged)
         await conn.execute("""
-            INSERT INTO documents (id, template_id, name, data, tex, engine, user_id, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
-        """, doc_id, body.template_id, body.name, json.dumps(merged), tex, body.engine, user["id"])
-    return {"id": doc_id, "name": body.name, "tex": tex}
+            INSERT INTO documents (id, template_id, name, data, tex, engine, user_id, client_id, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+        """, doc_id, body.template_id, body.name, json.dumps(merged), tex, body.engine,
+            user["id"], body.client_id)
+    return {"id": doc_id, "name": body.name, "tex": tex, "client_id": body.client_id}
 
 @app.get("/docs/{doc_id}")
 async def get_doc(doc_id: str, user=Depends(get_current_user)):
@@ -775,6 +813,8 @@ async def update_doc(doc_id: str, body: DocUpdate, user=Depends(get_current_user
             await conn.execute("UPDATE documents SET name=$2 WHERE id=$1", doc_id, body.name)
         if body.engine is not None:
             await conn.execute("UPDATE documents SET engine=$2 WHERE id=$1", doc_id, body.engine)
+        if body.client_id is not None:
+            await conn.execute("UPDATE documents SET client_id=$2 WHERE id=$1", doc_id, body.client_id)
     return {"ok": True}
 
 @app.delete("/docs/{doc_id}")

@@ -22,8 +22,8 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY . /app
 WORKDIR /app
 
-# PDF output dir
-RUN mkdir -p /tmp/tecto_pdfs
+# Persistent dirs (volumes mounted at runtime)
+RUN mkdir -p /app/pdfs /app/assets
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s \

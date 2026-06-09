@@ -131,6 +131,8 @@ services:
     image: synset-tecto:latest
     volumes:
       - /opt/synset/tecto/static:/app/static
+      - tecto_pdfs:/app/pdfs
+      - tecto_assets:/app/assets
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://synset_admin:xWdiVJl7y1eJJhcO6S%2FAqfgz1QvPznGs@synset-postgres:5432/tecto
@@ -156,3 +158,5 @@ volumes:
   memos_data:
   kavita_data:
   ghost_data:
+  tecto_pdfs:
+  tecto_assets:
