@@ -132,7 +132,7 @@ function LeftRail({ view, setView, onLogout }) {
     { id: 'templates', label: 'Plantillas', icon: I.Layout },
     { id: 'assets', label: 'Assets', icon: I.Image },
     { id: 'libre', label: 'Editor libre .tex', icon: I.Type },
-    { id: 'editor', label: 'Editor de plantilla', icon: I.PanelLeft },
+    // 'editor' is a sub-view of 'templates', not a standalone nav item
     { id: 'docview', label: 'Documentación', icon: I.FileText },
   ];
   return (
@@ -783,12 +783,13 @@ window.TectoTemplate = { TemplateWorkspace, TemplateInspector, CLS_LINES };
 })();
 /* --- Editor.jsx --- */
 (() => {
-/* Tecto UI Kit — code Editor pane (Monaco-like) with LaTeX highlighting. window.TectoEditor */
+/* Tecto UI Kit — Editor pane: read-only preview + interactive TexEditor with highlighting. window.TectoEditor */
 const React = window.React;
 
 (function injectEditorCSS() {
   if (document.getElementById('tecto-kit-editor-css')) return;
   const css = `
+/* ── Read-only preview editor ──────────────────────────────────────── */
 .tk-editor { display: flex; flex-direction: column; min-height: 0; background: var(--code-bg); }
 .tk-editor__tabs { display: flex; align-items: stretch; height: 36px; background: var(--surface-sunken); border-bottom: 1px solid var(--border); flex: none; }
 .tk-editor__tab { display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-muted); border-right: 1px solid var(--border); cursor: default; }
@@ -800,13 +801,23 @@ const React = window.React;
 .tk-editor__line--active { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .tk-editor__gutter { flex: none; width: 46px; padding-right: 14px; text-align: right; color: var(--code-gutter); user-select: none; font-size: 12px; }
 .tk-editor__code { flex: 1; white-space: pre-wrap; word-break: break-word; padding-right: 16px; color: var(--code-text); }
-.tk-tok-cmd { color: var(--code-cmd); }
-.tk-tok-brace { color: var(--code-bracket); }
-.tk-tok-math { color: var(--code-math); }
-.tk-tok-comment { color: var(--code-comment); font-style: italic; }
-.tk-tok-string { color: var(--code-string); }
 .tk-caret { display: inline-block; width: 2px; height: 15px; background: var(--accent); margin-left: 1px; vertical-align: -2px; animation: tk-blink 1.1s steps(1) infinite; }
 @keyframes tk-blink { 50% { opacity: 0; } }
+
+/* ── Syntax token colors (shared) ──────────────────────────────────── */
+.tk-tok-cmd     { color: var(--code-cmd); }
+.tk-tok-brace   { color: var(--code-bracket); }
+.tk-tok-math    { color: var(--code-math); }
+.tk-tok-comment { color: var(--code-comment); font-style: italic; }
+.tk-tok-string  { color: var(--code-string); }
+/* Tecto-specific: {{variable}} placeholder */
+.tk-tok-var { color: #e8b84b; font-weight: 600; }
+/* Tecto metadata comment lines: %% SECTION: / %% {{...}} */
+.tk-tok-tecto-kw  { color: #5b9bd5; font-style: normal; font-weight: 600; }
+.tk-tok-tecto-val { color: #6ec28a; font-style: italic; }
+
+/* ── TexEditor: uses inline styles; only need code-bg var fallback ── */
+.tk-texed-wrap { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 `;
   const el = document.createElement('style');
   el.id = 'tecto-kit-editor-css';
@@ -814,17 +825,45 @@ const React = window.React;
   document.head.appendChild(el);
 })();
 
+// ── Shared tokenizer ──────────────────────────────────────────────────────────
 function tokenize(line) {
   const out = [];
-  const re = /(%.*$)|(\\[a-zA-Z@]+\*?|\\.)|(\$[^$]*\$)|([{}\[\]])/g;
+  // Special Tecto metadata lines: %% SECTION: ... or %% {{...}}
+  const tectoSec = line.match(/^(\s*%%\s*)(SECTION:\s*)(.*)$/);
+  if (tectoSec) {
+    out.push({ t: tectoSec[1], c: 'tk-tok-comment' });
+    out.push({ t: tectoSec[2], c: 'tk-tok-tecto-kw' });
+    out.push({ t: tectoSec[3], c: 'tk-tok-tecto-val' });
+    return out;
+  }
+  const tectoField = line.match(/^(\s*%%\s*)(\{\{.*)$/);
+  if (tectoField) {
+    out.push({ t: tectoField[1], c: 'tk-tok-comment' });
+    // Tokenize the {{...}} part
+    const rest = tectoField[2];
+    const vm = rest.match(/^(\{\{)([^|}]*)(\|?.*)(\}\})(.*)$/);
+    if (vm) {
+      out.push({ t: vm[1], c: 'tk-tok-tecto-kw' });
+      out.push({ t: vm[2], c: 'tk-tok-var' });
+      out.push({ t: vm[3], c: 'tk-tok-tecto-val' });
+      out.push({ t: vm[4], c: 'tk-tok-tecto-kw' });
+      if (vm[5]) out.push({ t: vm[5], c: 'tk-tok-comment' });
+    } else {
+      out.push({ t: rest, c: 'tk-tok-tecto-val' });
+    }
+    return out;
+  }
+  // Regular line tokenizer
+  const re = /(\{\{[^{}]*\}\})|(%.*$)|(\\[a-zA-Z@]+\*?|\\.)|(\$[^$]*\$)|([{}\[\]])/g;
   let last = 0, m;
   while ((m = re.exec(line)) !== null) {
     if (m.index > last) out.push({ t: line.slice(last, m.index), c: null });
     let cls = null;
-    if (m[1]) cls = 'tk-tok-comment';
-    else if (m[2]) cls = 'tk-tok-cmd';
-    else if (m[3]) cls = 'tk-tok-math';
-    else if (m[4]) cls = 'tk-tok-brace';
+    if      (m[1]) cls = 'tk-tok-var';
+    else if (m[2]) cls = 'tk-tok-comment';
+    else if (m[3]) cls = 'tk-tok-cmd';
+    else if (m[4]) cls = 'tk-tok-math';
+    else if (m[5]) cls = 'tk-tok-brace';
     out.push({ t: m[0], c: cls });
     last = m.index + m[0].length;
   }
@@ -832,6 +871,7 @@ function tokenize(line) {
   return out;
 }
 
+// ── Read-only Editor (decorative/preview) ─────────────────────────────────────
 function Editor({ lines, activeLine = 11, caretLine = 23, filename = 'main.tex', secondary = 'refs.bib' }) {
   return (
     <div className="tk-editor">
@@ -858,7 +898,120 @@ function Editor({ lines, activeLine = 11, caretLine = 23, filename = 'main.tex',
   );
 }
 
-window.TectoEditor = { Editor };
+// ── TexEditor — gutter + textarea (reliable, no overlay tricks) ───────────────
+function TexEditor({ value, onChange, errorLog = '' }) {
+  const taRef  = React.useRef(null);
+  const gutRef = React.useRef(null);
+
+  // Parse error lines from compile log
+  const errorMap = React.useMemo(() => {
+    const m = {};
+    if (!errorLog) return m;
+    errorLog.split('\n').forEach(raw => {
+      const hit = raw.match(/(?:main\.tex|\.tex|input):(\d+):/i);
+      if (!hit) return;
+      const ln = parseInt(hit[1]);
+      if (!m[ln]) m[ln] = [];
+      m[ln].push(raw.replace(/^error:\s*/i, '').trim());
+    });
+    return m;
+  }, [errorLog]);
+
+  // Sync gutter scroll with textarea scroll
+  const onScroll = () => {
+    if (taRef.current && gutRef.current)
+      gutRef.current.scrollTop = taRef.current.scrollTop;
+  };
+
+  // Tab key: insert 2 spaces
+  const onKeyDown = (e) => {
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    const ta  = taRef.current;
+    const s   = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const next = value.slice(0, s) + '  ' + value.slice(end);
+    onChange(next);
+    setTimeout(() => {
+      ta.selectionStart = ta.selectionEnd = s + 2;
+    }, 0);
+  };
+
+  const lines     = value.split('\n');
+  const errLines  = Object.entries(errorMap).sort(([a],[b]) => +a - +b);
+  const LINE_H    = 21;   // px per line, matches line-height 1.6 * font 13px
+  const PT        = 12;   // padding-top of textarea
+  const GUTTER_W  = 38;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}>
+      <div style={{ display:'flex', flex:1, minHeight:0, background:'var(--code-bg)' }}>
+
+        {/* Line-number gutter */}
+        <div style={{ flexShrink:0, width:GUTTER_W, background:'var(--surface-sunken)', borderRight:'1px solid var(--border)', overflow:'hidden' }}>
+          <div ref={gutRef} style={{ overflowY:'hidden', paddingTop:PT }}>
+            {lines.map((_, i) => {
+              const ln = i + 1;
+              const isErr = !!errorMap[ln];
+              return (
+                <div key={i} style={{
+                  height:LINE_H, display:'flex', alignItems:'center',
+                  justifyContent:'flex-end', paddingRight:6, boxSizing:'border-box',
+                  gap:3
+                }}>
+                  {isErr && <div title={(errorMap[ln]||[]).join('\n')}
+                    style={{ width:5, height:5, borderRadius:'50%', background:'#e05252', flexShrink:0, cursor:'help' }} />}
+                  <span style={{
+                    fontFamily:'var(--font-mono)', fontSize:10, lineHeight:LINE_H+'px',
+                    color: isErr ? '#e05252' : 'var(--code-gutter)', userSelect:'none'
+                  }}>{ln}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Plain editable textarea — no tricks, just works */}
+        <textarea
+          ref={taRef}
+          className="tk-texed__ta"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onScroll={onScroll}
+          onKeyDown={onKeyDown}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
+          style={{
+            flex:1, minWidth:0,
+            padding: `${PT}px 16px 40px`,
+            fontFamily:'var(--font-mono)', fontSize:13, lineHeight:`${LINE_H}px`,
+            color:'var(--code-text)', background:'transparent',
+            border:'none', outline:'none', resize:'none',
+            overflow:'auto', tabSize:2, whiteSpace:'pre',
+            boxSizing:'border-box'
+          }}
+        />
+      </div>
+
+      {/* Error panel */}
+      {errLines.length > 0 && (
+        <div style={{ flexShrink:0, maxHeight:108, overflowY:'auto', background:'#1a0e0e', borderTop:'1px solid #5a2020' }}>
+          {errLines.map(([ln, msgs]) =>
+            msgs.map((msg, j) => (
+              <div key={ln+'-'+j} style={{ display:'flex', gap:8, padding:'5px 14px', fontFamily:'var(--font-mono)', fontSize:11, color:'#ff9a9a', lineHeight:1.55, borderBottom:'1px solid rgba(255,100,100,.08)' }}>
+                <span style={{ color:'#e05252', fontWeight:700, flexShrink:0, minWidth:32 }}>:{ln}</span>
+                <span style={{ flex:1, wordBreak:'break-word' }}>{msg}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+window.TectoEditor = { Editor, TexEditor };
 
 })();
 /* --- Integration + App --- */
@@ -877,7 +1030,10 @@ const escapeLaTeX = (val) => String(val)
   .replace(/~/g,'\\textasciitilde{}');
 
 const renderTex = (template, vars) =>
-  template.replace(/\{\{([^{}]+)\}\}/g, (_, key) => escapeLaTeX(vars[key.trim()] ?? ''));
+  template.replace(/\{\{([^{}]+)\}\}/g, (_, raw) => {
+    const key = raw.trim().split('|')[0].trim(); // key is before the first |
+    return escapeLaTeX(vars[key] ?? '');
+  });
 
 // ── Starter TeX para editor libre ─────────────────────────────────────────────
 const FREE_STARTER_TEX = String.raw`\documentclass[12pt]{article}
@@ -1120,33 +1276,7 @@ function NewDocModal({ templateName, clients, onClose, onCreate }) {
   );
 }
 
-// ── Field groups per template ─────────────────────────────────────────────────
-const FIELD_GROUPS = {
-  'tpl-cotizacion': [
-    { label: 'Empresa', keys: ['empresa_nombre','empresa_email','empresa_tel','empresa_direccion'] },
-    { label: 'Documento', keys: ['numero_cotizacion','fecha','moneda','validez'] },
-    { label: 'Cliente', keys: ['cliente_nombre','cliente_empresa','cliente_email'] },
-    { label: 'Descripción del proyecto', keys: ['descripcion_proyecto'] },
-    { label: 'Firma', keys: ['firma_nombre','firma_cargo'] },
-    { label: 'Condiciones de pago', keys: ['condiciones_pago'] },
-  ],
-  'tpl-srs': [
-    { label: 'Documento', keys: ['proyecto_nombre','version','fecha','autor'] },
-    { label: 'Descripción general', keys: ['descripcion_general'] },
-    { label: 'Alcance', keys: ['alcance'] },
-    { label: 'Usuarios del sistema', keys: ['usuarios'] },
-    { label: 'Requisitos funcionales', keys: ['requisitos_funcionales'] },
-    { label: 'Requisitos no funcionales', keys: ['requisitos_no_funcionales'] },
-    { label: 'Restricciones', keys: ['restricciones'] },
-  ],
-  'tpl-contrato': [
-    { label: 'Encabezado', keys: ['ciudad','fecha'] },
-    { label: 'Prestador del servicio', keys: ['proveedor_nombre','proveedor_rnc','proveedor_direccion'] },
-    { label: 'Cliente', keys: ['cliente_nombre','cliente_rnc','cliente_direccion'] },
-    { label: 'Objeto del contrato', keys: ['objeto_contrato'] },
-    { label: 'Términos económicos', keys: ['moneda','monto_total','condiciones_pago','plazo_entrega'] },
-  ],
-};
+// FIELD_GROUPS removed — groups now come dynamically from field.section in the template
 
 const ITEM_KEYS = new Set(['item_1_desc','item_1_hrs','item_1_total','item_2_desc','item_2_hrs','item_2_total',
   'item_3_desc','item_3_hrs','item_3_total','subtotal','itbis','total','total_doc']);
@@ -1223,20 +1353,30 @@ function DynamicGenerator({ template, data, setData, status, pdfUrl, onCompile, 
   );
 
   const fields = template.fields || [];
-  const groups = FIELD_GROUPS[template.id] || [];
   const isCotz = template.id === 'tpl-cotizacion';
   const set = (k, v) => setData({ ...data, [k]: v });
 
+  // Build section groups dynamically from field.section
+  // Fields with no section fall into a nameless group rendered without header
+  const sectionMap = new Map();
+  for (const f of fields) {
+    if (ITEM_KEYS.has(f.key)) continue;
+    const sec = f.section || '';
+    if (!sectionMap.has(sec)) sectionMap.set(sec, []);
+    sectionMap.get(sec).push(f);
+  }
+  const groups = [...sectionMap.entries()].map(([label, fs]) => ({ label, fields: fs }));
+
   const renderGroup = (group) => {
-    const gf = fields.filter(f => group.keys.includes(f.key) && !ITEM_KEYS.has(f.key));
+    const gf = group.fields;
     if (!gf.length) return null;
     const useCols = gf.length === 2 && gf.every(f => f.type !== 'textarea');
     return (
-      <React.Fragment key={group.label}>
-        <div className="tk-dyn__sec">{group.label}</div>
+      <React.Fragment key={group.label || '__main__'}>
+        {group.label && <div className="tk-dyn__sec">{group.label}</div>}
         {useCols ? (
-          <div className="tk-dyn__grid2">{gf.map(f => <FieldInput key={f.key} field={f} value={data[f.key]} onChange={v=>set(f.key,v)} />)}</div>
-        ) : gf.map(f => <FieldInput key={f.key} field={f} value={data[f.key]} onChange={v=>set(f.key,v)} />)}
+          <div className="tk-dyn__grid2">{gf.map(f => <FieldInput key={f.key} field={f} value={data[f.key] ?? ''} onChange={v=>set(f.key,v)} />)}</div>
+        ) : gf.map(f => <FieldInput key={f.key} field={f} value={data[f.key] ?? ''} onChange={v=>set(f.key,v)} />)}
       </React.Fragment>
     );
   };
@@ -1256,7 +1396,7 @@ function DynamicGenerator({ template, data, setData, status, pdfUrl, onCompile, 
           {groups.map(g => renderGroup(g))}
           {isCotz && <React.Fragment><div className="tk-dyn__sec">Conceptos</div><ItemsTable data={data} setData={setData} /></React.Fragment>}
           {!groups.length && fields.filter(f=>!ITEM_KEYS.has(f.key)).map(f => (
-            <FieldInput key={f.key} field={f} value={data[f.key]} onChange={v=>set(f.key,v)} />
+            <FieldInput key={f.key} field={f} value={data[f.key] ?? ''} onChange={v=>set(f.key,v)} />
           ))}
         </div>
       </div>
@@ -1287,9 +1427,10 @@ function DynamicGenerator({ template, data, setData, status, pdfUrl, onCompile, 
 }
 
 // ── FreeEditor ────────────────────────────────────────────────────────────────
-function FreeEditor({ tex, setTex, status, pdfUrl, onCompile, onDownload, engine, setEngine }) {
+function FreeEditor({ tex, setTex, status, pdfUrl, onCompile, onDownload, engine, setEngine, errorLog }) {
   const I = window.TectoIcons;
   const { Button, IconButton, StatusPill, Select } = window.TectoDS;
+  const { TexEditor } = window.TectoEditor;
   const [filename, setFilename] = React.useState('documento.tex');
   return (
     <div className="tk-free">
@@ -1307,9 +1448,8 @@ function FreeEditor({ tex, setTex, status, pdfUrl, onCompile, onDownload, engine
         <IconButton size="sm" variant="solid" label="Descargar" icon={<I.Download size={16}/>} onClick={onDownload} />
       </div>
       <div className="tk-free__body">
-        <div className="tk-free__editor">
-          <textarea className="tk-free__ta" value={tex} onChange={e=>setTex(e.target.value)}
-            spellCheck={false} autoCorrect="off" autoCapitalize="off" />
+        <div className="tk-free__editor" style={{display:'flex',flexDirection:'column'}}>
+          <TexEditor value={tex} onChange={setTex} errorLog={errorLog} />
         </div>
         <div className="tk-free__preview">
           {pdfUrl
@@ -1329,7 +1469,7 @@ function FreeEditor({ tex, setTex, status, pdfUrl, onCompile, onDownload, engine
 function PlantillasWorkspace({
   templates, selectedTemplate, content, setContent,
   saving, onSave, onSelect, onCreate, onDelete,
-  onCompile, compileStatus, previewUrl,
+  onCompile, compileStatus, previewUrl, compileErrorLog,
 }) {
   const I = window.TectoIcons;
   const { Button, IconButton, StatusPill, Badge } = window.TectoDS;
@@ -1341,11 +1481,13 @@ function PlantillasWorkspace({
   const fields = selectedTemplate ? (selectedTemplate.fields || []) : [];
 
   const insertVar = (key) => {
-    const ta = document.getElementById('tpl-ws-ta');
-    if (!ta) return;
+    // TexEditor renders a textarea with a known class; find it in the editor area
+    const ta = document.querySelector('.tk-texed__ta');
+    if (!ta) { setContent(content + `{{${key}}}`); return; }
     const s = ta.selectionStart, e = ta.selectionEnd;
-    setContent(content.slice(0, s) + `{{${key}}}` + content.slice(e));
-    setTimeout(() => { ta.selectionStart = ta.selectionEnd = s + key.length + 4; ta.focus(); }, 0);
+    const next = content.slice(0, s) + `{{${key}}}` + content.slice(e);
+    setContent(next);
+    requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + key.length + 4; ta.focus(); });
   };
 
   const doCreate = async () => {
@@ -1465,7 +1607,7 @@ function PlantillasWorkspace({
                     <span key={f.key} className="tk-var-chip" title={`Insertar {{${f.key}}}`}
                       onClick={()=>insertVar(f.key)}
                       style={{fontSize:10,padding:'2px 6px'}}>
-                      {f.key}
+                      {f.label || f.key}
                     </span>
                   ))}
                   {fields.length > 6 && (
@@ -1479,9 +1621,7 @@ function PlantillasWorkspace({
                 {saving?'Guardando…':'Guardar'}
               </Button>
             </div>
-            <textarea id="tpl-ws-ta" className="tk-free__ta" value={content}
-              onChange={e=>setContent(e.target.value)}
-              spellCheck={false} autoCorrect="off" autoCapitalize="off" />
+            <window.TectoEditor.TexEditor value={content} onChange={setContent} errorLog={compileErrorLog || ''} />
           </React.Fragment>
         ) : (
           <div className="tk-dyn__empty">
@@ -2178,6 +2318,7 @@ function App() {
   const [freeTeX, setFreeTeX] = React.useState(FREE_STARTER_TEX);
   const [freePdfUrl, setFreePdfUrl] = React.useState(null);
   const [freeStatus, setFreeStatus] = React.useState('idle');
+  const [freeErrorLog, setFreeErrorLog] = React.useState('');
   const [freeDocId] = React.useState('free-' + Math.random().toString(36).slice(2));
 
   // Template editor
@@ -2186,6 +2327,7 @@ function App() {
   const [editorSaving, setEditorSaving] = React.useState(false);
   const [editorPdfUrl, setEditorPdfUrl] = React.useState(null);
   const [editorStatus, setEditorStatus] = React.useState('idle');
+  const [editorErrorLog, setEditorErrorLog] = React.useState('');
   const [editorDocId] = React.useState('tpl-prev-' + Math.random().toString(36).slice(2));
 
   // Assets
@@ -2337,10 +2479,12 @@ function App() {
       if (c.ok) {
         setFreePdfUrl(c.pdf_url + '?t=' + Date.now());
         setFreeStatus('success');
+        setFreeErrorLog('');
         pushToast({ tone:'success', title:'PDF listo', msg:`${c.ms}ms` });
       } else {
         setFreeStatus('error');
-        pushToast({ tone:'danger', title:'Error', msg:(c.log||'Error en Tectonic').slice(0,300) });
+        setFreeErrorLog(c.log || '');
+        pushToast({ tone:'danger', title:'Error', msg:(c.log||'Error en Tectonic').slice(0,200) });
       }
     } catch(e) { setFreeStatus('error'); pushToast({ tone:'danger', title:'Error', msg:String(e) }); }
   };
@@ -2358,9 +2502,11 @@ function App() {
       if (c.ok) {
         setEditorPdfUrl(c.pdf_url + '?t=' + Date.now());
         setEditorStatus('success');
+        setEditorErrorLog('');
       } else {
         setEditorStatus('error');
-        pushToast({ tone:'danger', title:'Error de compilación', msg:(c.log||'Error').slice(0,300) });
+        setEditorErrorLog(c.log || '');
+        pushToast({ tone:'danger', title:'Error de compilación', msg:(c.log||'Error').slice(0,200) });
       }
     } catch(e) { setEditorStatus('error'); }
   };
@@ -2376,6 +2522,9 @@ function App() {
       if (r.ok) {
         pushToast({ tone:'success', title:'Plantilla guardada', msg:editorTemplate.name });
         loadTemplates();
+        // Reload the template so editorTemplate.fields reflects the auto-parsed fields
+        const tr = await apiFetch(`/templates/${editorTemplate.id}`);
+        if (tr.ok) { const tpl = await tr.json(); setEditorTemplate(tpl); }
       } else pushToast({ tone:'danger', title:'Error', msg:'No se pudo guardar' });
     } finally { setEditorSaving(false); }
   };
@@ -2531,6 +2680,7 @@ function App() {
               onCompile={compileTemplatePreview}
               compileStatus={editorStatus}
               previewUrl={editorPdfUrl}
+              compileErrorLog={editorErrorLog}
             />
           )}
           {view === 'assets' && (
@@ -2543,6 +2693,7 @@ function App() {
               onCompile={compileFree}
               onDownload={()=>freePdfUrl?window.open(freePdfUrl,'_blank'):pushToast({tone:'warning',title:'Sin PDF',msg:'Compila primero.'})}
               engine={engine} setEngine={setEngine}
+              errorLog={freeErrorLog}
             />
           )}
           {view === 'settings' && (

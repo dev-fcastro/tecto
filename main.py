@@ -137,8 +137,10 @@ async def shutdown():
 
 # ── Template rendering ────────────────────────────────────────────────────────
 def render_template(tex_template: str, data: dict) -> str:
+    """Render a .tex template substituting {{key}} or {{key|label|type|default}} placeholders."""
     def replacer(m):
-        key = m.group(1).strip()
+        raw = m.group(1).strip()
+        key = raw.split('|')[0].strip()   # extract key before any metadata
         val = str(data.get(key, f"[{key}]"))
         for ch, esc in [('\\','\\textbackslash{}'),('{','\\{'),('}','\\}'),
                         ('$','\\$'),('&','\\&'),('%','\\%'),('#','\\#'),
@@ -146,6 +148,78 @@ def render_template(tex_template: str, data: dict) -> str:
             val = val.replace(ch, esc)
         return val
     return re.sub(r'\{\{([^{}]+)\}\}', replacer, tex_template)
+
+def parse_fields_from_tex(tex: str) -> list:
+    """Parse field definitions from a .tex template — the .tex is the single source of truth.
+
+    Syntax:
+      %% SECTION: Label                       → starts a named section group
+      %% {{key|Label|type|default}}           → field defined in a comment (not rendered)
+      {{key|Label|type|default}}              → field defined inline (first occurrence wins)
+      {{key}}                                 → bare reference; auto-label if not yet defined
+
+    Types: text (default), textarea, date, number, select
+    Select options: {{key|Label|select|default|opt1,opt2,opt3}}
+    """
+    seen: dict = {}   # key → field dict
+    order: list = []  # insertion order
+    current_section = ""
+    lines = tex.splitlines()
+
+    def _add(key, label, ftype, default, section, parts):
+        if key in seen:
+            return
+        field = {"key": key, "label": label, "type": ftype,
+                 "default": default, "section": section}
+        if ftype == "select" and len(parts) > 4:
+            field["options"] = [o.strip() for o in parts[4].split(",")]
+        seen[key] = field
+        order.append(key)
+
+    # Pass 1 — comment-based definitions get priority
+    # (%% SECTION: and %% {{key|...}})
+    for line in lines:
+        stripped = line.strip()
+        sec_m = re.match(r'%%\s*SECTION:\s*(.+)', stripped)
+        if sec_m:
+            current_section = sec_m.group(1).strip()
+            continue
+        if not stripped.startswith('%%'):
+            continue
+        search = stripped[2:].strip()
+        for m in re.finditer(r'\{\{([^{}]+)\}\}', search):
+            parts = [p.strip() for p in m.group(1).strip().split('|')]
+            key = parts[0]
+            if not key or len(parts) < 2 or not parts[1]:
+                continue   # skip bare {{key}} in comments
+            _add(key, parts[1],
+                 parts[2] if len(parts) > 2 and parts[2] else 'text',
+                 parts[3] if len(parts) > 3 else '',
+                 current_section, parts)
+
+    # Pass 2 — inline content definitions (first occurrence of each key)
+    current_section = ""
+    for line in lines:
+        stripped = line.strip()
+        sec_m = re.match(r'%%\s*SECTION:\s*(.+)', stripped)
+        if sec_m:
+            current_section = sec_m.group(1).strip()
+            continue
+        if stripped.startswith('%%'):
+            continue   # already handled
+        for m in re.finditer(r'\{\{([^{}]+)\}\}', line):
+            parts = [p.strip() for p in m.group(1).strip().split('|')]
+            key = parts[0]
+            if not key or key in seen:
+                continue
+            has_meta = len(parts) > 1 and parts[1]
+            _add(key,
+                 parts[1] if has_meta else key.replace('_', ' ').title(),
+                 parts[2] if has_meta and len(parts) > 2 and parts[2] else 'text',
+                 parts[3] if has_meta and len(parts) > 3 else '',
+                 current_section, parts)
+
+    return [seen[k] for k in order]
 
 # ── Template content ──────────────────────────────────────────────────────────
 COTIZACION_TEMPLATE = r"""
@@ -165,6 +239,28 @@ COTIZACION_TEMPLATE = r"""
 \definecolor{tinta}{HTML}{2E2A26}
 \definecolor{suave}{HTML}{6B635B}
 \definecolor{borde}{HTML}{E8E4DE}
+
+%% SECTION: Empresa
+%% {{empresa_nombre|Nombre de la empresa|text|Synset Solutions}}
+%% {{empresa_email|Email de la empresa|text|contacto@synsetsolutions.com}}
+%% {{empresa_tel|Telefono|text|+1 (809) 000-0000}}
+%% {{empresa_direccion|Direccion|text|Santo Domingo, RD}}
+%% SECTION: Cotizacion
+%% {{numero_cotizacion|Numero de cotizacion|text|001}}
+%% {{fecha|Fecha|date|2026-06-09}}
+%% {{moneda|Moneda|select|USD|USD,DOP,EUR}}
+%% SECTION: Cliente
+%% {{cliente_nombre|Nombre del cliente|text}}
+%% {{cliente_empresa|Empresa del cliente|text}}
+%% {{cliente_email|Email del cliente|text}}
+%% SECTION: Proyecto
+%% {{descripcion_proyecto|Descripcion del proyecto|textarea}}
+%% SECTION: Condiciones
+%% {{condiciones_pago|Condiciones de pago|textarea|50% al inicio, 50% al entregar.}}
+%% {{validez|Validez de la oferta|text|30 dias}}
+%% SECTION: Firma
+%% {{firma_nombre|Nombre en firma|text}}
+%% {{firma_cargo|Cargo en firma|text|CEO / Director}}
 
 \pagestyle{fancy}
 \fancyhf{}
@@ -258,35 +354,7 @@ COTIZACION_TEMPLATE = r"""
 \end{document}
 """
 
-COTIZACION_FIELDS = [
-    {"key": "empresa_nombre",    "label": "Nombre de la empresa",     "type": "text",     "default": "Synset Solutions"},
-    {"key": "empresa_email",     "label": "Email de la empresa",      "type": "text",     "default": "contacto@synsetsolutions.com"},
-    {"key": "empresa_tel",       "label": "Telefono",                  "type": "text",     "default": "+1 (809) 000-0000"},
-    {"key": "empresa_direccion", "label": "Direccion",                 "type": "text",     "default": "Santo Domingo, RD"},
-    {"key": "numero_cotizacion", "label": "Numero de cotizacion",      "type": "text",     "default": "001"},
-    {"key": "fecha",             "label": "Fecha",                     "type": "text",     "default": "2026-06-08"},
-    {"key": "cliente_nombre",    "label": "Nombre del cliente",        "type": "text",     "default": ""},
-    {"key": "cliente_empresa",   "label": "Empresa del cliente",       "type": "text",     "default": ""},
-    {"key": "cliente_email",     "label": "Email del cliente",         "type": "text",     "default": ""},
-    {"key": "descripcion_proyecto","label":"Descripcion del proyecto",  "type": "textarea", "default": ""},
-    {"key": "moneda",            "label": "Moneda",                    "type": "select",   "default": "USD", "options": ["USD", "DOP", "EUR"]},
-    {"key": "item_1_desc",       "label": "Item 1 -- Descripcion",     "type": "text",     "default": "Desarrollo Backend"},
-    {"key": "item_1_hrs",        "label": "Item 1 -- Horas/Unidades",  "type": "text",     "default": "40h"},
-    {"key": "item_1_total",      "label": "Item 1 -- Total",           "type": "text",     "default": "2000.00"},
-    {"key": "item_2_desc",       "label": "Item 2 -- Descripcion",     "type": "text",     "default": "Desarrollo Frontend"},
-    {"key": "item_2_hrs",        "label": "Item 2 -- Horas/Unidades",  "type": "text",     "default": "30h"},
-    {"key": "item_2_total",      "label": "Item 2 -- Total",           "type": "text",     "default": "1500.00"},
-    {"key": "item_3_desc",       "label": "Item 3 -- Descripcion",     "type": "text",     "default": "Despliegue y configuracion"},
-    {"key": "item_3_hrs",        "label": "Item 3 -- Horas/Unidades",  "type": "text",     "default": "8h"},
-    {"key": "item_3_total",      "label": "Item 3 -- Total",           "type": "text",     "default": "400.00"},
-    {"key": "subtotal",          "label": "Subtotal",                  "type": "text",     "default": "3900.00"},
-    {"key": "itbis",             "label": "ITBIS (18%)",               "type": "text",     "default": "702.00"},
-    {"key": "total",             "label": "Total",                     "type": "text",     "default": "4602.00"},
-    {"key": "condiciones_pago",  "label": "Condiciones de pago",       "type": "textarea", "default": "50% al inicio, 50% al entregar."},
-    {"key": "validez",           "label": "Validez de la oferta",      "type": "text",     "default": "30 dias"},
-    {"key": "firma_nombre",      "label": "Nombre en firma",           "type": "text",     "default": ""},
-    {"key": "firma_cargo",       "label": "Cargo en firma",            "type": "text",     "default": "CEO / Director"},
-]
+# COTIZACION_FIELDS is now derived automatically from COTIZACION_TEMPLATE via parse_fields_from_tex
 
 SRS_TEMPLATE = r"""
 \documentclass[12pt]{article}
@@ -295,6 +363,11 @@ SRS_TEMPLATE = r"""
 \usepackage{xcolor,fancyhdr,titlesec,enumitem,microtype}
 \definecolor{acento}{HTML}{C75B12}
 \definecolor{suave}{HTML}{6B635B}
+%% SECTION: Documento
+%% {{proyecto_nombre|Nombre del proyecto|text}}
+%% {{version|Version|text|1.0}}
+%% {{fecha|Fecha|date|2026-06-09}}
+%% {{autor|Autor|text}}
 \pagestyle{fancy}\fancyhf{}
 \fancyhead[L]{\color{acento}\textbf{SRS -- {{proyecto_nombre}}}}\fancyhead[R]{\color{suave}\small v{{version}}}
 \fancyfoot[C]{\color{suave}\small \thepage}
@@ -306,33 +379,28 @@ SRS_TEMPLATE = r"""
 {\color{suave} Version {{version}} -- {{fecha}} -- {{autor}}}
 \end{center}
 \vspace{1cm}
+%% SECTION: Descripcion General
 \section{Descripcion General}
-{{descripcion_general}}
+{{descripcion_general|Descripcion general|textarea}}
+%% SECTION: Alcance
 \section{Alcance}
-{{alcance}}
+{{alcance|Alcance del sistema|textarea}}
+%% SECTION: Usuarios del Sistema
 \section{Usuarios del Sistema}
-{{usuarios}}
+{{usuarios|Usuarios del sistema|textarea}}
+%% SECTION: Requisitos Funcionales
 \section{Requisitos Funcionales}
-{{requisitos_funcionales}}
+{{requisitos_funcionales|Requisitos funcionales|textarea}}
+%% SECTION: Requisitos No Funcionales
 \section{Requisitos No Funcionales}
-{{requisitos_no_funcionales}}
+{{requisitos_no_funcionales|Requisitos no funcionales|textarea}}
+%% SECTION: Restricciones
 \section{Restricciones}
-{{restricciones}}
+{{restricciones|Restricciones|textarea}}
 \end{document}
 """
 
-SRS_FIELDS = [
-    {"key": "proyecto_nombre", "label": "Nombre del proyecto", "type": "text", "default": ""},
-    {"key": "version", "label": "Version", "type": "text", "default": "1.0"},
-    {"key": "fecha", "label": "Fecha", "type": "text", "default": "2026-06-08"},
-    {"key": "autor", "label": "Autor", "type": "text", "default": ""},
-    {"key": "descripcion_general", "label": "Descripcion general", "type": "textarea", "default": ""},
-    {"key": "alcance", "label": "Alcance del sistema", "type": "textarea", "default": ""},
-    {"key": "usuarios", "label": "Usuarios del sistema", "type": "textarea", "default": ""},
-    {"key": "requisitos_funcionales", "label": "Requisitos funcionales", "type": "textarea", "default": ""},
-    {"key": "requisitos_no_funcionales", "label": "Requisitos no funcionales", "type": "textarea", "default": ""},
-    {"key": "restricciones", "label": "Restricciones", "type": "textarea", "default": ""},
-]
+# SRS_FIELDS is now derived automatically from SRS_TEMPLATE via parse_fields_from_tex
 
 CONTRATO_TEMPLATE = r"""
 \documentclass[12pt]{article}
@@ -341,6 +409,23 @@ CONTRATO_TEMPLATE = r"""
 \usepackage{xcolor,fancyhdr,microtype}
 \definecolor{acento}{HTML}{C75B12}
 \definecolor{suave}{HTML}{6B635B}
+%% SECTION: Encabezado
+%% {{ciudad|Ciudad|text|Santo Domingo}}
+%% {{fecha|Fecha|date|2026-06-09}}
+%% SECTION: Prestador
+%% {{proveedor_nombre|Nombre del prestador|text|Synset Solutions}}
+%% {{proveedor_rnc|RNC / Cedula del prestador|text}}
+%% {{proveedor_direccion|Direccion del prestador|text}}
+%% SECTION: Cliente
+%% {{cliente_nombre|Nombre del cliente|text}}
+%% {{cliente_rnc|RNC / Cedula del cliente|text}}
+%% {{cliente_direccion|Direccion del cliente|text}}
+%% SECTION: Clausulas
+%% {{objeto_contrato|Objeto del contrato|textarea}}
+%% {{moneda|Moneda|select|USD|USD,DOP,EUR}}
+%% {{monto_total|Monto total|text}}
+%% {{condiciones_pago|Condiciones de pago|textarea}}
+%% {{plazo_entrega|Plazo de entrega|text}}
 \pagestyle{fancy}\fancyhf{}
 \fancyhead[C]{\color{suave}\small CONTRATO DE SERVICIOS}\fancyfoot[C]{\color{suave}\small \thepage}
 \begin{document}
@@ -381,50 +466,59 @@ CONTRATO_TEMPLATE = r"""
 \end{document}
 """
 
-CONTRATO_FIELDS = [
-    {"key": "ciudad", "label": "Ciudad", "type": "text", "default": "Santo Domingo"},
-    {"key": "fecha", "label": "Fecha", "type": "text", "default": "2026-06-08"},
-    {"key": "proveedor_nombre", "label": "Nombre del prestador", "type": "text", "default": "Synset Solutions"},
-    {"key": "proveedor_rnc", "label": "RNC/Cedula del prestador", "type": "text", "default": ""},
-    {"key": "proveedor_direccion", "label": "Direccion del prestador", "type": "text", "default": ""},
-    {"key": "cliente_nombre", "label": "Nombre del cliente", "type": "text", "default": ""},
-    {"key": "cliente_rnc", "label": "RNC/Cedula del cliente", "type": "text", "default": ""},
-    {"key": "cliente_direccion", "label": "Direccion del cliente", "type": "text", "default": ""},
-    {"key": "objeto_contrato", "label": "Objeto del contrato", "type": "textarea", "default": ""},
-    {"key": "moneda", "label": "Moneda", "type": "select", "default": "USD", "options": ["USD", "DOP", "EUR"]},
-    {"key": "monto_total", "label": "Monto total", "type": "text", "default": ""},
-    {"key": "condiciones_pago", "label": "Condiciones de pago", "type": "textarea", "default": ""},
-    {"key": "plazo_entrega", "label": "Plazo de entrega", "type": "text", "default": ""},
-]
+# CONTRATO_FIELDS is now derived automatically from CONTRATO_TEMPLATE via parse_fields_from_tex
 
 TEMPLATES_SEED = [
     {"id": "tpl-cotizacion", "name": "Cotizacion", "category": "Comercial",
      "description": "Propuesta economica formal con desglose de servicios, ITBIS y condiciones.",
      "icon": "currency", "color": "#c75b12",
-     "tex_template": COTIZACION_TEMPLATE, "fields": COTIZACION_FIELDS},
+     "tex_template": COTIZACION_TEMPLATE,
+     "fields": parse_fields_from_tex(COTIZACION_TEMPLATE)},
     {"id": "tpl-srs", "name": "SRS", "category": "Tecnico",
      "description": "Especificacion de Requisitos de Software para proyectos de desarrollo.",
      "icon": "code", "color": "#2563b8",
-     "tex_template": SRS_TEMPLATE, "fields": SRS_FIELDS},
+     "tex_template": SRS_TEMPLATE,
+     "fields": parse_fields_from_tex(SRS_TEMPLATE)},
     {"id": "tpl-contrato", "name": "Contrato de Servicios", "category": "Legal",
      "description": "Contrato de prestacion de servicios con clausulas de pago y confidencialidad.",
      "icon": "shield", "color": "#1f8a4c",
-     "tex_template": CONTRATO_TEMPLATE, "fields": CONTRATO_FIELDS},
+     "tex_template": CONTRATO_TEMPLATE,
+     "fields": parse_fields_from_tex(CONTRATO_TEMPLATE)},
 ]
 
 async def seed_templates():
+    """Seed built-in templates.
+
+    Strategy:
+    - If the template doesn't exist → insert it.
+    - If it exists AND its tex_template doesn't yet contain the new %% metadata syntax →
+      update tex_template + fields (one-time migration to new dynamic-field format).
+    - If it exists and already has %% syntax → leave it alone (preserve user edits).
+    """
     async with pool.acquire() as conn:
         for tpl in TEMPLATES_SEED:
-            await conn.execute("""
-                INSERT INTO templates (id, name, category, description, icon, color, tex_template, fields)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-                ON CONFLICT (id) DO UPDATE SET
-                  tex_template=EXCLUDED.tex_template,
-                  fields=EXCLUDED.fields,
-                  description=EXCLUDED.description
-            """, tpl["id"], tpl["name"], tpl["category"], tpl["description"],
-                tpl["icon"], tpl["color"],
-                tpl["tex_template"], json.dumps(tpl["fields"]))
+            existing = await conn.fetchrow("SELECT tex_template FROM templates WHERE id=$1", tpl["id"])
+            if existing is None:
+                # Fresh insert
+                await conn.execute("""
+                    INSERT INTO templates (id, name, category, description, icon, color, tex_template, fields)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                """, tpl["id"], tpl["name"], tpl["category"], tpl["description"],
+                    tpl["icon"], tpl["color"],
+                    tpl["tex_template"], json.dumps(tpl["fields"]))
+            else:
+                existing_tex = existing["tex_template"] or ""
+                # Migrate only if the stored template lacks the new %% metadata syntax
+                if "%% SECTION:" not in existing_tex and "%% {{" not in existing_tex:
+                    await conn.execute("""
+                        UPDATE templates SET tex_template=$2, fields=$3 WHERE id=$1
+                    """, tpl["id"], tpl["tex_template"], json.dumps(tpl["fields"]))
+                else:
+                    # Already has new syntax — re-parse fields in case they drifted
+                    fresh_fields = parse_fields_from_tex(existing_tex)
+                    await conn.execute(
+                        "UPDATE templates SET fields=$2 WHERE id=$1",
+                        tpl["id"], json.dumps(fresh_fields))
 
 # ── Clients ───────────────────────────────────────────────────────────────────
 class ClientCreate(BaseModel):
@@ -682,12 +776,15 @@ async def get_template(tpl_id: str, user=Depends(get_current_user)):
 @app.post("/templates")
 async def create_template(body: TemplateCreate, user=Depends(get_current_user)):
     tpl_id = "tpl-" + str(uuid.uuid4())[:8]
+    tex = body.tex_template or ""
+    # Auto-parse fields from tex; fall back to explicitly provided fields
+    fields = parse_fields_from_tex(tex) if tex else (body.fields or [])
     async with pool.acquire() as conn:
         await conn.execute("""
             INSERT INTO templates (id, name, category, description, icon, color, tex_template, fields)
             VALUES ($1,$2,$3,$4,'custom',$5,$6,$7)
         """, tpl_id, body.name, body.category, body.description,
-            body.color, body.tex_template or "", json.dumps(body.fields or []))
+            body.color, tex, json.dumps(fields))
     return {"id": tpl_id, "name": body.name}
 
 @app.put("/templates/{tpl_id}")
@@ -697,7 +794,11 @@ async def update_template(tpl_id: str, body: TemplateUpdate, user=Depends(get_cu
         if not row:
             raise HTTPException(404)
         if body.tex_template is not None:
-            await conn.execute("UPDATE templates SET tex_template=$2 WHERE id=$1", tpl_id, body.tex_template)
+            # When tex changes, auto-parse fields from the new template
+            auto_fields = parse_fields_from_tex(body.tex_template)
+            await conn.execute(
+                "UPDATE templates SET tex_template=$2, fields=$3 WHERE id=$1",
+                tpl_id, body.tex_template, json.dumps(auto_fields))
         if body.name is not None:
             await conn.execute("UPDATE templates SET name=$2 WHERE id=$1", tpl_id, body.name)
         if body.category is not None:
@@ -706,7 +807,8 @@ async def update_template(tpl_id: str, body: TemplateUpdate, user=Depends(get_cu
             await conn.execute("UPDATE templates SET description=$2 WHERE id=$1", tpl_id, body.description)
         if body.color is not None:
             await conn.execute("UPDATE templates SET color=$2 WHERE id=$1", tpl_id, body.color)
-        if body.fields is not None:
+        if body.fields is not None and body.tex_template is None:
+            # Only allow manual fields override when tex is NOT being updated
             await conn.execute("UPDATE templates SET fields=$2 WHERE id=$1", tpl_id, json.dumps(body.fields))
     return {"ok": True}
 
