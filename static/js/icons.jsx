@@ -1,4 +1,3 @@
-var React = window.React;
 
 function Ico({ size = 18, children, ...rest }) {
   return (

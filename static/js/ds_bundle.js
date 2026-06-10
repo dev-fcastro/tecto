@@ -1116,7 +1116,6 @@ Object.assign(__ds_scope, { Tabs });
 // ui_kits/tecto/App.jsx
 try { (() => {
 /* Tecto UI Kit — app orchestrator: document workspace + generator + editor. window.TectoApp */
-const React = window.React;
 (function injectAppCSS() {
   if (document.getElementById('tecto-kit-app-css')) return;
   const css = `
@@ -1385,7 +1384,6 @@ window.TectoApp = {
 // ui_kits/tecto/Chrome.jsx
 try { (() => {
 /* Tecto UI Kit — logo lockup + app chrome (TopBar, LeftRail, StatusBar). window.TectoChrome */
-const React = window.React;
 (function injectChromeCSS() {
   if (document.getElementById('tecto-kit-chrome-css')) return;
   const css = `
@@ -1566,7 +1564,6 @@ window.TectoChrome = {
 // ui_kits/tecto/CorpDocs.jsx
 try { (() => {
 /* Tecto UI Kit — corporate document renders (the PDF output). window.TectoCorp */
-const React = window.React;
 const DEFAULT_BRAND = {
   name: 'Acme Estudio',
   initials: 'A',
@@ -1933,7 +1930,6 @@ window.TectoCorp = {
 // ui_kits/tecto/Editor.jsx
 try { (() => {
 /* Tecto UI Kit — code Editor pane (Monaco-like) with LaTeX highlighting. window.TectoEditor */
-const React = window.React;
 (function injectEditorCSS() {
   if (document.getElementById('tecto-kit-editor-css')) return;
   const css = `
@@ -2033,7 +2029,6 @@ window.TectoEditor = {
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 /* Tecto UI Kit — document Generator: form (left) → live corporate PDF (right). window.TectoGenerator */
-const React = window.React;
 (function injectGenCSS() {
   if (document.getElementById('tecto-kit-gen-css')) return;
   const css = `
@@ -2297,7 +2292,6 @@ window.TectoGenerator = {
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 /* Tecto UI Kit — icon set (Lucide-style, 1.75 stroke). Exposed on window.TectoIcons */
-const React = window.React;
 function Ico({
   size = 18,
   children,
@@ -2684,7 +2678,6 @@ window.TectoIcons = {
 // ui_kits/tecto/PdfPreview.jsx
 try { (() => {
 /* Tecto UI Kit — PDF preview pane with compile states. window.TectoPreview */
-const React = window.React;
 (function injectPreviewCSS() {
   if (document.getElementById('tecto-kit-preview-css')) return;
   const css = `
@@ -2864,7 +2857,6 @@ window.TectoPreview = {
 // ui_kits/tecto/Sample.jsx
 try { (() => {
 /* Tecto UI Kit — sample document: LaTeX source + its typeset render. window.TectoSample */
-const React = window.React;
 const SOURCE = String.raw`\documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
 \usepackage{amsmath, amssymb}
@@ -3007,7 +2999,6 @@ window.TectoSample = {
 // ui_kits/tecto/Screens.jsx
 try { (() => {
 /* Tecto UI Kit — Library, History, Settings screens. window.TectoScreens */
-const React = window.React;
 (function injectScreensCSS() {
   if (document.getElementById('tecto-kit-screens-css')) return;
   const css = `
@@ -3340,7 +3331,6 @@ window.TectoScreens = {
 // ui_kits/tecto/TemplateEditor.jsx
 try { (() => {
 /* Tecto UI Kit — Template authoring: .cls editor + Campos/Assets inspector. window.TectoTemplate */
-const React = window.React;
 (function injectTplCSS() {
   if (document.getElementById('tecto-kit-tpl-css')) return;
   const css = `
@@ -3561,7 +3551,6 @@ window.TectoTemplate = {
 // ui_kits/tecto/WorkspaceScreens.jsx
 try { (() => {
 /* Tecto UI Kit — document-workspace screens: Documentos, Plantillas, Assets. window.TectoWorkspace */
-const React = window.React;
 (function injectWsCSS() {
   if (document.getElementById('tecto-kit-ws-css')) return;
   const css = `

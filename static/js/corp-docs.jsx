@@ -1,4 +1,3 @@
-var React = window.React;
 
 const DEFAULT_BRAND = {
   name: 'Acme Estudio',

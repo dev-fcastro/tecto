@@ -1,0 +1,7 @@
+.claude/
+__pycache__/
+*.pyc
+.env
+DEPLOY.md
+deploy.sh
+.DS_Store

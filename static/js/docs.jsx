@@ -1,4 +1,3 @@
-var React = window.React;
 
 (function injectDocsCSS() {
   if (document.getElementById('tecto-docs-css')) return;
