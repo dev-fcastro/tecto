@@ -816,8 +816,12 @@ const React = window.React;
 .tk-tok-tecto-kw  { color: #5b9bd5; font-style: normal; font-weight: 600; }
 .tk-tok-tecto-val { color: #6ec28a; font-style: italic; }
 
-/* ── TexEditor: uses inline styles; only need code-bg var fallback ── */
+/* ── TexEditor ── */
 .tk-texed-wrap { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.tk-texed__gutter::-webkit-scrollbar { display: none; }
+.tk-texed__ta::-webkit-scrollbar { width: 8px; height: 8px; }
+.tk-texed__ta::-webkit-scrollbar-track { background: transparent; }
+.tk-texed__ta::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
 `;
   const el = document.createElement('style');
   el.id = 'tecto-kit-editor-css';
@@ -898,12 +902,11 @@ function Editor({ lines, activeLine = 11, caretLine = 23, filename = 'main.tex',
   );
 }
 
-// ── TexEditor — gutter + textarea (reliable, no overlay tricks) ───────────────
+// ── TexEditor — gutter + textarea ────────────────────────────────────────────
 function TexEditor({ value, onChange, errorLog = '' }) {
   const taRef  = React.useRef(null);
   const gutRef = React.useRef(null);
 
-  // Parse error lines from compile log
   const errorMap = React.useMemo(() => {
     const m = {};
     if (!errorLog) return m;
@@ -917,13 +920,13 @@ function TexEditor({ value, onChange, errorLog = '' }) {
     return m;
   }, [errorLog]);
 
-  // Sync gutter scroll with textarea scroll
-  const onScroll = () => {
+  // Sync gutter scroll — works because gutRef has height:100% + overflowY:scroll
+  // so its clientHeight < scrollHeight and scrollTop can be set freely.
+  const syncGutter = () => {
     if (taRef.current && gutRef.current)
       gutRef.current.scrollTop = taRef.current.scrollTop;
   };
 
-  // Tab key: insert 2 spaces
   const onKeyDown = (e) => {
     if (e.key !== 'Tab') return;
     e.preventDefault();
@@ -932,75 +935,76 @@ function TexEditor({ value, onChange, errorLog = '' }) {
     const end = ta.selectionEnd;
     const next = value.slice(0, s) + '  ' + value.slice(end);
     onChange(next);
-    setTimeout(() => {
-      ta.selectionStart = ta.selectionEnd = s + 2;
-    }, 0);
+    setTimeout(() => { ta.selectionStart = ta.selectionEnd = s + 2; }, 0);
   };
 
-  const lines     = value.split('\n');
-  const errLines  = Object.entries(errorMap).sort(([a],[b]) => +a - +b);
-  const LINE_H    = 21;   // px per line, matches line-height 1.6 * font 13px
-  const PT        = 12;   // padding-top of textarea
-  const GUTTER_W  = 38;
+  const lines    = (value || '').split('\n');
+  const errLines = Object.entries(errorMap).sort(([a],[b]) => +a - +b);
+  const LINE_H   = 21;  // must match textarea line-height below
+  const PT       = 12;  // padding-top — same in gutter and textarea
+  const GW       = 46;  // gutter width (fits up to 4-digit numbers)
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}>
-      <div style={{ display:'flex', flex:1, minHeight:0, background:'var(--code-bg)' }}>
+    <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0 }}>
+      {/* Editor row */}
+      <div style={{ display:'flex', flex:1, minHeight:0, overflow:'hidden', background:'var(--code-bg)' }}>
 
-        {/* Line-number gutter */}
-        <div style={{ flexShrink:0, width:GUTTER_W, background:'var(--surface-sunken)', borderRight:'1px solid var(--border)', overflow:'hidden' }}>
-          <div ref={gutRef} style={{ overflowY:'hidden', paddingTop:PT }}>
+        {/* Gutter: outer clips visuals; inner has height:100% + overflowY:scroll so scrollTop works */}
+        <div style={{ flexShrink:0, width:GW, overflow:'hidden', background:'var(--surface-sunken)', borderRight:'1px solid var(--border)' }}>
+          <div
+            ref={gutRef}
+            className="tk-texed__gutter"
+            style={{ height:'100%', overflowY:'scroll', paddingTop:PT, boxSizing:'border-box', scrollbarWidth:'none', msOverflowStyle:'none' }}
+          >
             {lines.map((_, i) => {
               const ln = i + 1;
               const isErr = !!errorMap[ln];
               return (
-                <div key={i} style={{
-                  height:LINE_H, display:'flex', alignItems:'center',
-                  justifyContent:'flex-end', paddingRight:6, boxSizing:'border-box',
-                  gap:3
-                }}>
-                  {isErr && <div title={(errorMap[ln]||[]).join('\n')}
-                    style={{ width:5, height:5, borderRadius:'50%', background:'#e05252', flexShrink:0, cursor:'help' }} />}
-                  <span style={{
-                    fontFamily:'var(--font-mono)', fontSize:10, lineHeight:LINE_H+'px',
-                    color: isErr ? '#e05252' : 'var(--code-gutter)', userSelect:'none'
-                  }}>{ln}</span>
+                <div key={i} style={{ height:LINE_H, display:'flex', alignItems:'center', justifyContent:'flex-end', paddingRight:8, boxSizing:'border-box', gap:3 }}>
+                  {isErr && (
+                    <div title={(errorMap[ln]||[]).join('\n')}
+                      style={{ width:5, height:5, borderRadius:'50%', background:'#e05252', flexShrink:0, cursor:'help' }} />
+                  )}
+                  <span style={{ fontFamily:'var(--font-mono)', fontSize:12, lineHeight:LINE_H+'px', color: isErr ? '#e05252' : 'var(--code-gutter)', userSelect:'none' }}>
+                    {ln}
+                  </span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Plain editable textarea — no tricks, just works */}
+        {/* Textarea — plain controlled textarea, no magic */}
         <textarea
           ref={taRef}
           className="tk-texed__ta"
-          value={value}
+          value={value || ''}
           onChange={e => onChange(e.target.value)}
-          onScroll={onScroll}
+          onScroll={syncGutter}
           onKeyDown={onKeyDown}
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
           style={{
             flex:1, minWidth:0,
-            padding: `${PT}px 16px 40px`,
-            fontFamily:'var(--font-mono)', fontSize:13, lineHeight:`${LINE_H}px`,
+            padding:`${PT}px 16px 40px`,
+            fontFamily:'var(--font-mono)', fontSize:13, lineHeight:LINE_H+'px',
             color:'var(--code-text)', background:'transparent',
             border:'none', outline:'none', resize:'none',
-            overflow:'auto', tabSize:2, whiteSpace:'pre',
-            boxSizing:'border-box'
+            overflowY:'auto', overflowX:'auto',
+            tabSize:2, whiteSpace:'pre',
+            boxSizing:'border-box',
           }}
         />
       </div>
 
       {/* Error panel */}
       {errLines.length > 0 && (
-        <div style={{ flexShrink:0, maxHeight:108, overflowY:'auto', background:'#1a0e0e', borderTop:'1px solid #5a2020' }}>
+        <div style={{ flexShrink:0, maxHeight:120, overflowY:'auto', background:'#1a0e0e', borderTop:'1px solid #5a2020' }}>
           {errLines.map(([ln, msgs]) =>
             msgs.map((msg, j) => (
               <div key={ln+'-'+j} style={{ display:'flex', gap:8, padding:'5px 14px', fontFamily:'var(--font-mono)', fontSize:11, color:'#ff9a9a', lineHeight:1.55, borderBottom:'1px solid rgba(255,100,100,.08)' }}>
-                <span style={{ color:'#e05252', fontWeight:700, flexShrink:0, minWidth:32 }}>:{ln}</span>
+                <span style={{ color:'#e05252', fontWeight:700, flexShrink:0, minWidth:36 }}>:{ln}</span>
                 <span style={{ flex:1, wordBreak:'break-word' }}>{msg}</span>
               </div>
             ))
