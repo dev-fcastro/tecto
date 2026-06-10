@@ -24,11 +24,25 @@ const escapeLaTeX = (val) => {
   return v.replace(/[\\{}$&%#_^~]/g, (m) => escapeMap[m]);
 };
 
-const renderTex = (template, vars) =>
-  template.replace(/\{\{([^{}]+)\}\}/g, (_, raw) => {
-    const key = raw.trim().split('|')[0].trim();
-    return escapeLaTeX(vars[key] ?? '');
-  });
+const renderTex = (template, vars) => {
+  const lines = template.split('\n');
+  return lines.map(line => {
+    const isTectoComment = line.trim().startsWith('%%');
+    return line.replace(/\{\{([^{}]+)\}\}/g, (_, raw) => {
+      const parts = raw.trim().split('|');
+      const key = parts[0].trim();
+      
+      // Definition in a comment line -> remove from output (it's metadata)
+      if (isTectoComment && parts.length > 1) return "";
+      
+      const val = escapeLaTeX(vars[key] ?? '');
+      if (isTectoComment) {
+        return val.replace(/\n/g, '\n%% ');
+      }
+      return val;
+    });
+  }).join('\n');
+};
 
 // ── Starter TeX para editor libre ─────────────────────────────────────────────
 const FREE_STARTER_TEX = String.raw`\documentclass[12pt]{article}

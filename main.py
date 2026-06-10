@@ -137,23 +137,48 @@ async def shutdown():
 
 # ── Template rendering ────────────────────────────────────────────────────────
 def render_template(tex_template: str, data: dict) -> str:
-    """Render a .tex template substituting {{key}} or {{key|label|type|default}} placeholders."""
-    def replacer(m):
-        raw = m.group(1).strip()
-        key = raw.split('|')[0].strip()   # extract key before any metadata
-        val = str(data.get(key, f"[{key}]"))
+    """Render a .tex template substituting {{key}} or {{key|label|type|default}} placeholders.
+    Handles multiline values in comments by ensuring each line is prefixed with the comment character.
+    """
+    # LaTeX escaping map
+    escape_map = {
+        '\\': r'\textbackslash{}', '{': r'\{', '}': r'\}',
+        '$': r'\$', '&': r'\&', '%': r'\%', '#': r'\#',
+        '_': r'\_', '^': r'\^{}', '~': r'\textasciitilde{}'
+    }
+    regex_esc = re.compile('|'.join(re.escape(k) for k in escape_map.keys()))
+
+    def escape_latex(val):
+        return regex_esc.sub(lambda match: escape_map[match.group(0)], str(val))
+
+    # Process line by line to detect comment context
+    lines = tex_template.split('\n')
+    processed_lines = []
+    
+    for line in lines:
+        is_tecto_comment = line.strip().startswith('%%')
         
-        # Single-pass escaping to avoid double-escaping bugs (e.g. \ -> \textbackslash\{\})
-        escape_map = {
-            '\\': r'\textbackslash{}', '{': r'\{', '}': r'\}',
-            '$': r'\$', '&': r'\&', '%': r'\%', '#': r'\#',
-            '_': r'\_', '^': r'\^{}', '~': r'\textasciitilde{}'
-        }
-        # re.escape(k) handles special regex characters in the keys themselves
-        regex = re.compile('|'.join(re.escape(k) for k in escape_map.keys()))
-        return regex.sub(lambda match: escape_map[match.group(0)], val)
+        def replacer(m):
+            raw = m.group(1).strip()
+            parts = raw.split('|')
+            key = parts[0].strip()
+            
+            # If it's a definition in a %% line, remove it from output (it's purely metadata)
+            if is_tecto_comment and len(parts) > 1:
+                return ""
+            
+            val = data.get(key, f"[{key}]")
+            escaped_val = escape_latex(val)
+            
+            if is_tecto_comment:
+                # If we are in a comment line, maintain the comment for multiline values
+                return escaped_val.replace('\n', '\n%% ')
+            return escaped_val
+
+        new_line = re.sub(r'\{\{([^{}]+)\}\}', replacer, line)
+        processed_lines.append(new_line)
         
-    return re.sub(r'\{\{([^{}]+)\}\}', replacer, tex_template)
+    return '\n'.join(processed_lines)
 
 def parse_fields_from_tex(tex: str) -> list:
     """Parse field definitions from a .tex template — the .tex is the single source of truth.
