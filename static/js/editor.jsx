@@ -31,12 +31,17 @@ const React = window.React;
 .tk-texed__ta::-webkit-scrollbar { width: 8px; height: 8px; }
 .tk-texed__ta::-webkit-scrollbar-track { background: transparent; }
 .tk-texed__ta::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+.tk-texed__hl::-webkit-scrollbar { display: none; }
 `;
   const el = document.createElement('style');
   el.id = 'tecto-kit-editor-css';
   el.textContent = css;
   document.head.appendChild(el);
 })();
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 function tokenize(line) {
   const out = [];
@@ -83,6 +88,7 @@ function tokenize(line) {
 function TexEditor({ value, onChange, errorLog = '' }) {
   const taRef  = React.useRef(null);
   const gutRef = React.useRef(null);
+  const hlRef  = React.useRef(null);
 
   const errorMap = React.useMemo(() => {
     const m = {};
@@ -97,11 +103,11 @@ function TexEditor({ value, onChange, errorLog = '' }) {
     return m;
   }, [errorLog]);
 
-  // Sync gutter scroll — works because gutRef has height:100% + overflowY:scroll
-  // so its clientHeight < scrollHeight and scrollTop can be set freely.
-  const syncGutter = () => {
-    if (taRef.current && gutRef.current)
-      gutRef.current.scrollTop = taRef.current.scrollTop;
+  const syncScroll = () => {
+    const ta = taRef.current;
+    if (!ta) return;
+    if (gutRef.current) gutRef.current.scrollTop = ta.scrollTop;
+    if (hlRef.current) { hlRef.current.scrollTop = ta.scrollTop; hlRef.current.scrollLeft = ta.scrollLeft; }
   };
 
   const onKeyDown = (e) => {
@@ -114,6 +120,13 @@ function TexEditor({ value, onChange, errorLog = '' }) {
     onChange(next);
     setTimeout(() => { ta.selectionStart = ta.selectionEnd = s + 2; }, 0);
   };
+
+  const highlightedHTML = React.useMemo(() => {
+    return (value || '').split('\n').map(line => {
+      const toks = tokenize(line);
+      return toks.map(tk => tk.c ? `<span class="${tk.c}">${escHtml(tk.t)}</span>` : escHtml(tk.t)).join('');
+    }).join('\n');
+  }, [value]);
 
   const lines    = (value || '').split('\n');
   const errLines = Object.entries(errorMap).sort(([a],[b]) => +a - +b);
@@ -150,27 +163,36 @@ function TexEditor({ value, onChange, errorLog = '' }) {
           </div>
         </div>
 
-        <textarea
-          ref={taRef}
-          className="tk-texed__ta"
-          value={value || ''}
-          onChange={e => onChange(e.target.value)}
-          onScroll={syncGutter}
-          onKeyDown={onKeyDown}
-          spellCheck={false}
-          autoCorrect="off"
-          autoCapitalize="off"
-          style={{
-            flex:1, minWidth:0,
-            padding:`${PT}px 16px 40px`,
-            fontFamily:'var(--font-mono)', fontSize:13, lineHeight:LINE_H+'px',
-            color:'var(--code-text)', background:'transparent',
-            border:'none', outline:'none', resize:'none',
-            overflowY:'auto', overflowX:'auto',
-            tabSize:2, whiteSpace:'pre',
-            boxSizing:'border-box',
-          }}
-        />
+        <div style={{ position:'relative', flex:1, minWidth:0, overflow:'hidden' }}>
+          <div
+            ref={hlRef}
+            aria-hidden="true"
+            className="tk-texed__hl"
+            dangerouslySetInnerHTML={{ __html: highlightedHTML }}
+            style={{ position:'absolute', inset:0, pointerEvents:'none',
+              overflow:'scroll', scrollbarWidth:'none', msOverflowStyle:'none',
+              padding:`${PT}px 16px 40px`, fontFamily:'var(--font-mono)', fontSize:13, lineHeight:LINE_H+'px',
+              whiteSpace:'pre', color:'var(--code-text)', boxSizing:'border-box' }}
+          />
+          <textarea
+            ref={taRef}
+            className="tk-texed__ta"
+            value={value || ''}
+            onChange={e => onChange(e.target.value)}
+            onScroll={syncScroll}
+            onKeyDown={onKeyDown}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            style={{ position:'absolute', inset:0,
+              padding:`${PT}px 16px 40px`,
+              fontFamily:'var(--font-mono)', fontSize:13, lineHeight:LINE_H+'px',
+              color:'transparent', caretColor:'var(--code-text)', background:'transparent',
+              border:'none', outline:'none', resize:'none',
+              overflowY:'auto', overflowX:'auto',
+              tabSize:2, whiteSpace:'pre', boxSizing:'border-box' }}
+          />
+        </div>
       </div>
 
       {errLines.length > 0 && (

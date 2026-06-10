@@ -4,9 +4,9 @@ const React = window.React;
   if (document.getElementById('tecto-screens-css')) return;
   const css = `
 /* App chrome */
-.tk-app { height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
-.tk-body { flex: 1; min-height: 0; display: flex; }
-.tk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.tk-app { height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); overflow: hidden; }
+.tk-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.tk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .tk-toasts { position: fixed; right: 18px; bottom: 18px; z-index: 300; display: flex; flex-direction: column; gap: 10px; }
 
 /* Auth screens */
@@ -110,6 +110,10 @@ const React = window.React;
 .tk-set-card h3 { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--ink-strong); margin: 0 0 2px; }
 .tk-set-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .tk-set-row span { font-family: var(--font-sans); font-size: var(--text-sm); color: var(--ink-muted); }
+
+/* Split pane divider */
+.tk-split-divider { width: 5px; flex-shrink: 0; cursor: col-resize; background: var(--border); transition: background 150ms; user-select: none; }
+.tk-split-divider:hover, .tk-split-divider:active { background: var(--accent); }
 
 /* Plantillas categories */
 .tk-cat-head { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-subtle); margin: 20px 0 10px; }
@@ -362,6 +366,40 @@ function DynamicGenerator({ template, data, setData, status, pdfUrl, onCompile, 
   );
 }
 
+// ── SplitPane ─────────────────────────────────────────────────────────────────
+function SplitPane({ left, right, defaultLeft = 50, minLeft = 20, maxLeft = 80 }) {
+  const [leftPct, setLeftPct] = React.useState(defaultLeft);
+  const containerRef = React.useRef(null);
+
+  const onPointerDown = (e) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e) => {
+    if (e.buttons !== 1) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    setLeftPct(Math.min(maxLeft, Math.max(minLeft, pct)));
+  };
+
+  return (
+    <div ref={containerRef} style={{ display:'flex', flex:1, minHeight:0, overflow:'hidden' }}>
+      <div style={{ width:`${leftPct}%`, minHeight:0, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+        {left}
+      </div>
+      <div
+        className="tk-split-divider"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+      />
+      <div style={{ flex:1, minWidth:0, minHeight:0, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+        {right}
+      </div>
+    </div>
+  );
+}
+
 // ── FreeEditor ────────────────────────────────────────────────────────────────
 function FreeEditor({ tex, setTex, status, pdfUrl, onCompile, onDownload, engine, setEngine, errorLog }) {
   const I = window.TectoIcons;
@@ -383,20 +421,24 @@ function FreeEditor({ tex, setTex, status, pdfUrl, onCompile, onDownload, engine
         </Button>
         <IconButton size="sm" variant="solid" label="Descargar" icon={<I.Download size={16}/>} onClick={onDownload} />
       </div>
-      <div className="tk-free__body">
-        <div className="tk-free__editor" style={{display:'flex',flexDirection:'column'}}>
-          <TexEditor value={tex} onChange={setTex} errorLog={errorLog} />
-        </div>
-        <div className="tk-free__preview">
-          {pdfUrl
-            ? <iframe src={pdfUrl} title="PDF libre" style={{flex:1,width:'100%',height:'100%',minHeight:'500px',border:'none'}} />
-            : <div className="tk-dyn__empty"><I.Zap size={36}/><span>Escribe LaTeX y presiona Compilar</span></div>
-          }
-          {status==='running' && (
-            <div className="tk-dyn__overlay" style={{position:'absolute',inset:0}}><window.TectoDS.Spinner size="lg"/><span>Compilando…</span></div>
-          )}
-        </div>
-      </div>
+      <SplitPane
+        left={
+          <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
+            <TexEditor value={tex} onChange={setTex} errorLog={errorLog} />
+          </div>
+        }
+        right={
+          <div className="tk-free__preview" style={{flex:1,position:'relative'}}>
+            {pdfUrl
+              ? <iframe src={pdfUrl} title="PDF libre" style={{width:'100%',height:'100%',border:'none'}} />
+              : <div className="tk-dyn__empty"><I.Zap size={36}/><span>Escribe LaTeX y presiona Compilar</span></div>
+            }
+            {status==='running' && (
+              <div className="tk-dyn__overlay" style={{position:'absolute',inset:0}}><window.TectoDS.Spinner size="lg"/><span>Compilando…</span></div>
+            )}
+          </div>
+        }
+      />
     </div>
   );
 }
@@ -519,70 +561,74 @@ function PlantillasWorkspace({
         </div>
       </div>
 
-      {/* Center: LaTeX editor */}
-      <div style={{flex:'1.3',minWidth:0,display:'flex',flexDirection:'column',borderRight:'1px solid var(--border)'}}>
-        {selectedTemplate ? (
-          <React.Fragment>
-            <div className="tk-dyn__bar" style={{borderBottom:'1px solid var(--border)'}}>
-              <I.PanelLeft size={15} style={{color:'var(--ink-muted)'}}/>
-              <span style={{fontFamily:'var(--font-mono)',fontSize:13,color:'var(--ink-strong)',fontWeight:500}}>{selectedTemplate.id}.tex</span>
-              <span style={{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--ink-subtle)',marginLeft:4}}>
-                ({content.split('\n').length} líneas)
-              </span>
-              <div className="tk-dyn__sp"/>
-              {fields.length > 0 && (
-                <div style={{display:'flex',gap:3,flexWrap:'nowrap',overflow:'hidden',maxWidth:360}}>
-                  {fields.slice(0,6).map(f => (
-                    <span key={f.key} className="tk-var-chip" title={`Insertar {{${f.key}}}`}
-                      onClick={()=>insertVar(f.key)}
-                      style={{fontSize:10,padding:'2px 6px'}}>
-                      {f.label || f.key}
-                    </span>
-                  ))}
-                  {fields.length > 6 && (
-                    <span style={{fontFamily:'var(--font-mono)',fontSize:10,color:'var(--ink-subtle)',padding:'2px 4px'}}>
-                      +{fields.length-6}
-                    </span>
+      <SplitPane
+        defaultLeft={57}
+        left={
+          <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
+            {selectedTemplate ? (
+              <React.Fragment>
+                <div className="tk-dyn__bar" style={{borderBottom:'1px solid var(--border)'}}>
+                  <I.PanelLeft size={15} style={{color:'var(--ink-muted)'}}/>
+                  <span style={{fontFamily:'var(--font-mono)',fontSize:13,color:'var(--ink-strong)',fontWeight:500}}>{selectedTemplate.id}.tex</span>
+                  <span style={{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--ink-subtle)',marginLeft:4}}>
+                    ({content.split('\n').length} líneas)
+                  </span>
+                  <div className="tk-dyn__sp"/>
+                  {fields.length > 0 && (
+                    <div style={{display:'flex',gap:3,flexWrap:'nowrap',overflow:'hidden',maxWidth:360}}>
+                      {fields.slice(0,6).map(f => (
+                        <span key={f.key} className="tk-var-chip" title={`Insertar {{${f.key}}}`}
+                          onClick={()=>insertVar(f.key)}
+                          style={{fontSize:10,padding:'2px 6px'}}>
+                          {f.label || f.key}
+                        </span>
+                      ))}
+                      {fields.length > 6 && (
+                        <span style={{fontFamily:'var(--font-mono)',fontSize:10,color:'var(--ink-subtle)',padding:'2px 4px'}}>
+                          +{fields.length-6}
+                        </span>
+                      )}
+                    </div>
                   )}
+                  <Button variant="primary" size="sm" iconLeft={<I.Save size={14}/>} onClick={onSave} loading={saving}>
+                    {saving?'Guardando…':'Guardar'}
+                  </Button>
                 </div>
-              )}
-              <Button variant="primary" size="sm" iconLeft={<I.Save size={14}/>} onClick={onSave} loading={saving}>
-                {saving?'Guardando…':'Guardar'}
+                <window.TectoEditor.TexEditor value={content} onChange={setContent} errorLog={compileErrorLog || ''} />
+              </React.Fragment>
+            ) : (
+              <div className="tk-dyn__empty">
+                <I.PanelLeft size={36}/>
+                <span>Selecciona una plantilla para editar su LaTeX</span>
+              </div>
+            )}
+          </div>
+        }
+        right={
+          <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column',background:'var(--bg-subtle)'}}>
+            <div className="tk-dyn__bar">
+              <I.FileText size={15}/><b>vista previa</b>
+              <div className="tk-dyn__sp"/>
+              <StatusPill status={compileStatus}/>
+              <Button variant="primary" size="sm" iconLeft={<I.Play size={15}/>}
+                onClick={onCompile} loading={compileStatus==='running'} disabled={!selectedTemplate}>
+                {compileStatus==='running'?'Compilando…':'Previsualizar'}
               </Button>
             </div>
-            <window.TectoEditor.TexEditor value={content} onChange={setContent} errorLog={compileErrorLog || ''} />
-          </React.Fragment>
-        ) : (
-          <div className="tk-dyn__empty">
-            <I.PanelLeft size={36}/>
-            <span>Selecciona una plantilla para editar su LaTeX</span>
-          </div>
-        )}
-      </div>
-
-      {/* Right: preview */}
-      <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',background:'var(--bg-subtle)'}}>
-        <div className="tk-dyn__bar">
-          <I.FileText size={15}/><b>vista previa</b>
-          <div className="tk-dyn__sp"/>
-          <StatusPill status={compileStatus}/>
-          <Button variant="primary" size="sm" iconLeft={<I.Play size={15}/>}
-            onClick={onCompile} loading={compileStatus==='running'} disabled={!selectedTemplate}>
-            {compileStatus==='running'?'Compilando…':'Previsualizar'}
-          </Button>
-        </div>
-        <div style={{flex:1,position:'relative',overflow:'hidden'}}>
-          {previewUrl
-            ? <iframe src={previewUrl} title="Preview" style={{width:'100%',height:'100%',minHeight:'500px',border:'none'}}/>
-            : <div className="tk-dyn__empty"><I.Layout size={36}/><span>Previsualiza con datos de ejemplo</span></div>
-          }
-          {compileStatus==='running' && (
-            <div className="tk-dyn__overlay" style={{position:'absolute',inset:0}}>
-              <window.TectoDS.Spinner size="lg"/><span>Compilando…</span>
+            <div style={{flex:1,position:'relative',overflow:'hidden'}}>
+              {previewUrl
+                ? <iframe src={previewUrl} title="Preview" style={{width:'100%',height:'100%',border:'none'}}/>
+                : <div className="tk-dyn__empty"><I.Layout size={36}/><span>Previsualiza con datos de ejemplo</span></div>
+              }
+              {compileStatus==='running' && (
+                <div className="tk-dyn__overlay" style={{position:'absolute',inset:0}}>
+                  <window.TectoDS.Spinner size="lg"/><span>Compilando…</span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       <style>{`
         .tpl-del-btn:hover { opacity: 1 !important; color: var(--danger-fg) !important; }

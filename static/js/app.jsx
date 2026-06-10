@@ -3,9 +3,9 @@ const React = window.React;
 (function injectAppCSS() {
   if (document.getElementById('tecto-app-css')) return;
   const css = `
-.tk-app { height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
-.tk-body { flex: 1; min-height: 0; display: flex; }
-.tk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.tk-app { height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); overflow: hidden; }
+.tk-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.tk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .tk-toasts { position: fixed; right: 18px; bottom: 18px; z-index: 300; display: flex; flex-direction: column; gap: 10px; }
 `;
   const el = document.createElement('style');

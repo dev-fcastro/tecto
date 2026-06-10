@@ -3,7 +3,7 @@
 # Ejecutar desde la raíz del repo: bash deploy.sh
 set -euo pipefail
 
-SERVER="synset_server@server.synsetsolutions.com"
+SERVER="synset_server@10.0.0.13"
 PASS="1011"
 REMOTE_APP="/opt/synset/tecto"
 REMOTE_LAB="/opt/synset/lab"
@@ -27,7 +27,7 @@ echo "==> Construyendo imagen y reiniciando contenedor..."
 sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no "$SERVER" "
   set -e
   cd $REMOTE_APP
-  docker build -t synset-tecto:latest .
+  docker build -t ghcr.io/odimsom/tecto:latest .
   cd $REMOTE_LAB
   docker compose up -d --force-recreate tecto
   echo '==> Esperando healthcheck...'

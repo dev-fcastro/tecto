@@ -1,0 +1,31 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: "🚀 Novedades"
+      labels:
+        - enhancement
+        - feature
+    - title: "🐛 Correcciones"
+      labels:
+        - bug
+        - fix
+    - title: "⚡ Mejoras de rendimiento"
+      labels:
+        - performance
+    - title: "🔒 Seguridad"
+      labels:
+        - security
+    - title: "🏗️ Cambios internos"
+      labels:
+        - refactor
+        - chore
+        - deps
+    - title: "📖 Documentación"
+      labels:
+        - documentation
+        - docs
+    - title: "💥 Cambios incompatibles"
+      labels:
+        - breaking-change
