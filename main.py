@@ -792,7 +792,10 @@ async def compile_latex(req: CompileReq, user=Depends(get_current_user)):
                 shutil.copy2(asset, workdir / asset.name)
 
     # Auto-fix pdfLaTeX packages incompatible with Tectonic/XeLaTeX
-    tex = req.tex.strip()
+    tex = req.tex
+    # Remove BOM and leading/trailing whitespace
+    tex = re.sub(r'^\ufeff', '', tex).strip()
+
     tex = tex.replace(r'\usepackage[utf8]{inputenc}', '')
     tex = tex.replace(r'\usepackage[latin1]{inputenc}', '')
     tex = tex.replace(r'\usepackage[T1]{fontenc}', r'\usepackage{fontspec}')
