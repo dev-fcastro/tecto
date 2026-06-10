@@ -358,45 +358,215 @@ COTIZACION_TEMPLATE = r"""
 
 SRS_TEMPLATE = r"""
 \documentclass[12pt]{article}
+
 \usepackage{fontspec}
 \usepackage[a4paper,margin=2.5cm]{geometry}
-\usepackage{xcolor,fancyhdr,titlesec,enumitem,microtype}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{microtype}
+
 \definecolor{acento}{HTML}{C75B12}
 \definecolor{suave}{HTML}{6B635B}
-%% SECTION: Documento
+
+%% SECTION: Encabezado del Documento
 %% {{proyecto_nombre|Nombre del proyecto|text}}
 %% {{version|Version|text|1.0}}
-%% {{fecha|Fecha|date|2026-06-09}}
+%% {{fecha|Fecha|date}}
 %% {{autor|Autor|text}}
-\pagestyle{fancy}\fancyhf{}
-\fancyhead[L]{\color{acento}\textbf{SRS -- {{proyecto_nombre}}}}\fancyhead[R]{\color{suave}\small v{{version}}}
+%% {{cliente|Cliente|text}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\color{acento}\textbf{SRS -- {{proyecto_nombre}}}}
+\fancyhead[R]{\color{suave}\small v{{version}}}
 \fancyfoot[C]{\color{suave}\small \thepage}
-\titleformat{\section}{\large\bfseries\color{acento}}{}{0em}{}[\vspace{-6pt}\rule{\textwidth}{0.4pt}]
+
+\titleformat{\section}
+{\large\bfseries\color{acento}}
+{\thesection}
+{0.5em}
+{}
+[\vspace{-4pt}\rule{\textwidth}{0.4pt}]
+
 \begin{document}
+
 \begin{center}
-{\fontsize{24}{28}\selectfont\textbf{Especificacion de Requisitos}}\\[6pt]
-{\fontsize{18}{22}\selectfont {{proyecto_nombre}}}\\[10pt]
-{\color{suave} Version {{version}} -- {{fecha}} -- {{autor}}}
+
+{\fontsize{24}{28}\selectfont\textbf{Software Requirements Specification}}
+
+\vspace{6pt}
+
+{\fontsize{18}{22}\selectfont {{proyecto_nombre}}}
+
+\vspace{10pt}
+
+{\color{suave}
+Version {{version}}
+\quad---\quad
+{{fecha}}
+\quad---\quad
+{{autor}}
+}
+
 \end{center}
+
 \vspace{1cm}
+
+\section{Informacion del Documento}
+
+\begin{tabularx}{\textwidth}{lX}
+Proyecto & {{proyecto_nombre}} \\
+Cliente  & {{cliente}} \\
+Autor    & {{autor}} \\
+Version  & {{version}} \\
+Fecha    & {{fecha}} \\
+\end{tabularx}
+
+%% SECTION: Historial
+%% {{historial_versiones|Historial de versiones|textarea|v1.0 -- Documento inicial}}
+
+\section{Historial de Versiones}
+
+{{historial_versiones}}
+
+%% SECTION: Introduccion
+%% {{proposito|Proposito|textarea}}
+%% {{alcance|Alcance|textarea}}
+%% {{glosario|Definiciones y Glosario|textarea}}
+
+\section{Introduccion}
+
+\subsection*{Proposito}
+
+{{proposito}}
+
+\subsection*{Alcance}
+
+{{alcance}}
+
+\subsection*{Definiciones y Glosario}
+
+{{glosario}}
+
 %% SECTION: Descripcion General
+%% {{descripcion_general|Descripcion general del sistema|textarea}}
+%% {{stakeholders|Stakeholders|textarea}}
+%% {{usuarios|Usuarios del sistema|textarea}}
+%% {{supuestos|Supuestos|textarea}}
+%% {{dependencias|Dependencias|textarea}}
+
 \section{Descripcion General}
-{{descripcion_general|Descripcion general|textarea}}
-%% SECTION: Alcance
-\section{Alcance}
-{{alcance|Alcance del sistema|textarea}}
-%% SECTION: Usuarios del Sistema
-\section{Usuarios del Sistema}
-{{usuarios|Usuarios del sistema|textarea}}
-%% SECTION: Requisitos Funcionales
+
+{{descripcion_general}}
+
+\subsection*{Stakeholders}
+
+{{stakeholders}}
+
+\subsection*{Usuarios del Sistema}
+
+{{usuarios}}
+
+\subsection*{Supuestos}
+
+{{supuestos}}
+
+\subsection*{Dependencias}
+
+{{dependencias}}
+
+%% SECTION: Requisitos
+%% {{casos_de_uso|Casos de uso|textarea}}
+%% {{requisitos_funcionales|Requisitos funcionales|textarea}}
+%% {{reglas_negocio|Reglas de negocio|textarea}}
+%% {{requisitos_no_funcionales|Requisitos no funcionales|textarea}}
+
+\section{Casos de Uso}
+
+{{casos_de_uso}}
+
 \section{Requisitos Funcionales}
-{{requisitos_funcionales|Requisitos funcionales|textarea}}
-%% SECTION: Requisitos No Funcionales
+
+{{requisitos_funcionales}}
+
+\section{Reglas de Negocio}
+
+{{reglas_negocio}}
+
 \section{Requisitos No Funcionales}
-{{requisitos_no_funcionales|Requisitos no funcionales|textarea}}
-%% SECTION: Restricciones
+
+{{requisitos_no_funcionales}}
+
+%% SECTION: Atributos de Calidad
+%% {{rendimiento|Rendimiento|textarea}}
+%% {{seguridad|Seguridad|textarea}}
+%% {{disponibilidad|Disponibilidad|textarea}}
+%% {{auditoria|Auditoria|textarea}}
+
+\subsection*{Rendimiento}
+
+{{rendimiento}}
+
+\subsection*{Seguridad}
+
+{{seguridad}}
+
+\subsection*{Disponibilidad}
+
+{{disponibilidad}}
+
+\subsection*{Auditoria}
+
+{{auditoria}}
+
+%% SECTION: Diseno e Integraciones
+%% {{integraciones|Integraciones externas|textarea}}
+%% {{modelo_datos|Modelo de datos|textarea}}
+%% {{ui_ux|Interfaz de usuario|textarea}}
+
+\section{Integraciones Externas}
+
+{{integraciones}}
+
+\section{Modelo de Datos}
+
+{{modelo_datos}}
+
+\section{Interfaz de Usuario}
+
+{{ui_ux}}
+
+%% SECTION: Cierre
+%% {{criterios_aceptacion|Criterios de aceptacion|textarea}}
+%% {{restricciones|Restricciones|textarea}}
+%% {{exclusiones|Exclusiones|textarea}}
+%% {{riesgos|Riesgos|textarea}}
+%% {{anexos|Anexos|textarea}}
+
+\section{Criterios de Aceptacion}
+
+{{criterios_aceptacion}}
+
 \section{Restricciones}
-{{restricciones|Restricciones|textarea}}
+
+{{restricciones}}
+
+\section{Exclusiones}
+
+{{exclusiones}}
+
+\section{Riesgos}
+
+{{riesgos}}
+
+\section{Anexos}
+
+{{anexos}}
+
 \end{document}
 """
 
@@ -491,15 +661,13 @@ async def seed_templates():
 
     Strategy:
     - If the template doesn't exist → insert it.
-    - If it exists AND its tex_template doesn't yet contain the new %% metadata syntax →
-      update tex_template + fields (one-time migration to new dynamic-field format).
-    - If it exists and already has %% syntax → leave it alone (preserve user edits).
+    - If it exists → NEVER overwrite tex_template (preserve user edits).
+      Only re-parse fields from the stored tex so the form stays in sync.
     """
     async with pool.acquire() as conn:
         for tpl in TEMPLATES_SEED:
             existing = await conn.fetchrow("SELECT tex_template FROM templates WHERE id=$1", tpl["id"])
             if existing is None:
-                # Fresh insert
                 await conn.execute("""
                     INSERT INTO templates (id, name, category, description, icon, color, tex_template, fields)
                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
@@ -507,18 +675,11 @@ async def seed_templates():
                     tpl["icon"], tpl["color"],
                     tpl["tex_template"], json.dumps(tpl["fields"]))
             else:
-                existing_tex = existing["tex_template"] or ""
-                # Migrate only if the stored template lacks the new %% metadata syntax
-                if "%% SECTION:" not in existing_tex and "%% {{" not in existing_tex:
-                    await conn.execute("""
-                        UPDATE templates SET tex_template=$2, fields=$3 WHERE id=$1
-                    """, tpl["id"], tpl["tex_template"], json.dumps(tpl["fields"]))
-                else:
-                    # Already has new syntax — re-parse fields in case they drifted
-                    fresh_fields = parse_fields_from_tex(existing_tex)
-                    await conn.execute(
-                        "UPDATE templates SET fields=$2 WHERE id=$1",
-                        tpl["id"], json.dumps(fresh_fields))
+                # Template exists — keep user's tex, just refresh the parsed fields
+                fresh_fields = parse_fields_from_tex(existing["tex_template"] or "")
+                await conn.execute(
+                    "UPDATE templates SET fields=$2 WHERE id=$1",
+                    tpl["id"], json.dumps(fresh_fields))
 
 # ── Clients ───────────────────────────────────────────────────────────────────
 class ClientCreate(BaseModel):
