@@ -142,11 +142,17 @@ def render_template(tex_template: str, data: dict) -> str:
         raw = m.group(1).strip()
         key = raw.split('|')[0].strip()   # extract key before any metadata
         val = str(data.get(key, f"[{key}]"))
-        for ch, esc in [('\\','\\textbackslash{}'),('{','\\{'),('}','\\}'),
-                        ('$','\\$'),('&','\\&'),('%','\\%'),('#','\\#'),
-                        ('_','\\_'),('^','\\^{}'),('~','\\textasciitilde{}')]:
-            val = val.replace(ch, esc)
-        return val
+        
+        # Single-pass escaping to avoid double-escaping bugs (e.g. \ -> \textbackslash\{\})
+        escape_map = {
+            '\\': r'\textbackslash{}', '{': r'\{', '}': r'\}',
+            '$': r'\$', '&': r'\&', '%': r'\%', '#': r'\#',
+            '_': r'\_', '^': r'\^{}', '~': r'\textasciitilde{}'
+        }
+        # re.escape(k) handles special regex characters in the keys themselves
+        regex = re.compile('|'.join(re.escape(k) for k in escape_map.keys()))
+        return regex.sub(lambda match: escape_map[match.group(0)], val)
+        
     return re.sub(r'\{\{([^{}]+)\}\}', replacer, tex_template)
 
 def parse_fields_from_tex(tex: str) -> list:

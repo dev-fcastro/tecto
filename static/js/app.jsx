@@ -14,14 +14,15 @@
 })();
 
 // ── LaTeX helpers ─────────────────────────────────────────────────────────────
-const escapeLaTeX = (val) => String(val)
-  .replace(/·/g, '--').replace(/—/g, '---').replace(/–/g, '--')
-  .replace(/\\/g, '\\textbackslash{}')
-  .replace(/\{/g, '\\{').replace(/\}/g, '\\}')
-  .replace(/\$/g, '\\$')
-  .replace(/&/g,'\\&').replace(/%/g,'\\%').replace(/#/g,'\\#')
-  .replace(/_/g,'\\_').replace(/\^/g,'\\^{}')
-  .replace(/~/g,'\\textasciitilde{}');
+const escapeLaTeX = (val) => {
+  const v = String(val).replace(/·/g, '--').replace(/—/g, '---').replace(/–/g, '--');
+  const escapeMap = {
+    '\\': '\\textbackslash{}', '{': '\\{', '}': '\\}',
+    '$': '\\$', '&': '\\&', '%': '\\%', '#': '\\#',
+    '_': '\\_', '^': '\\^{}', '~': '\\textasciitilde{}'
+  };
+  return v.replace(/[\\{}$&%#_^~]/g, (m) => escapeMap[m]);
+};
 
 const renderTex = (template, vars) =>
   template.replace(/\{\{([^{}]+)\}\}/g, (_, raw) => {
@@ -97,6 +98,7 @@ function App() {
   const [pdfUrl, setPdfUrl] = React.useState(null);
   const [currentDocId, setCurrentDocId] = React.useState(null);
   const [pendingTemplate, setPendingTemplate] = React.useState(null);
+  const autoSaveTimeout = React.useRef(null);
 
   // Free editor
   const [freeTeX, setFreeTeX] = React.useState(FREE_STARTER_TEX);
@@ -125,6 +127,15 @@ function App() {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem('tecto_theme', theme);
   }, [theme]);
+
+  React.useEffect(() => {
+    if (!currentDocId || view !== 'generator') return;
+    if (autoSaveTimeout.current) clearTimeout(autoSaveTimeout.current);
+    autoSaveTimeout.current = setTimeout(() => {
+      apiFetch(`/docs/${currentDocId}`, { method:'PUT', body: JSON.stringify({ data: formData }) }).catch(()=>{});
+    }, 1500);
+    return () => clearTimeout(autoSaveTimeout.current);
+  }, [formData, currentDocId, view]);
 
   React.useEffect(() => {
     if (token) checkAuth();
