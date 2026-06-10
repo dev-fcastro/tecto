@@ -1,4 +1,4 @@
-const React = window.React;
+var React = window.React;
 
 (function injectEditorCSS() {
   if (document.getElementById('tecto-kit-editor-css')) return;

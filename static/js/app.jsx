@@ -1,4 +1,4 @@
-const React = window.React;
+var React = window.React;
 
 (function injectAppCSS() {
   if (document.getElementById('tecto-app-css')) return;

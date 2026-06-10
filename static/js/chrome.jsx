@@ -1,4 +1,4 @@
-const React = window.React;
+var React = window.React;
 
 (function injectChromeCSS() {
   if (document.getElementById('tecto-kit-chrome-css')) return;

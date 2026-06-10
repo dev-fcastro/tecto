@@ -1,4 +1,4 @@
-const React = window.React;
+var React = window.React;
 
 (function injectScreensCSS() {
   if (document.getElementById('tecto-screens-css')) return;
