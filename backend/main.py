@@ -12,7 +12,7 @@ import asyncpg
 # ── Config ────────────────────────────────────────────────────────────────────
 DB_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://synset_admin:xWdiVJl7y1eJJhcO6S/Aqfgz1QvPznGs@synset-postgres:5432/tecto",
+    "******localhost:5432/tecto",
 )
 PDF_DIR = Path("/app/pdfs")
 PDF_DIR.mkdir(exist_ok=True)

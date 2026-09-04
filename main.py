@@ -18,7 +18,7 @@ import aiofiles
 # ── Config ────────────────────────────────────────────────────────────────────
 DB_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://synset_admin:xWdiVJl7y1eJJhcO6S%2FAqfgz1QvPznGs@synset-postgres:5432/tecto",
+    "******localhost:5432/tecto",
 )
 SECRET_KEY = os.environ.get("SECRET_KEY", "tecto-dev-secret-change-in-prod-2026")
 ALGORITHM = "HS256"
