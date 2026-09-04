@@ -25,6 +25,23 @@ const escapeLaTeX = (val) => {
 };
 
 const renderTex = (template, vars) => {
+  const resolveVar = (key) => {
+    if (!key) return '';
+    if (key.includes('.')) {
+      const parts = key.split('.');
+      let node = vars;
+      for (const p of parts) {
+        if (node && typeof node === 'object' && p in node) node = node[p];
+        else { node = undefined; break; }
+      }
+      if (node !== undefined && node !== null) return node;
+    }
+    if (vars && typeof vars === 'object') {
+      if (vars.fields && Object.prototype.hasOwnProperty.call(vars.fields, key)) return vars.fields[key];
+      if (Object.prototype.hasOwnProperty.call(vars, key)) return vars[key];
+    }
+    return '';
+  };
   const lines = template.split('\n');
   return lines.map(line => {
     const isTectoComment = line.trim().startsWith('%%');
@@ -35,7 +52,7 @@ const renderTex = (template, vars) => {
       // Definition in a comment line -> remove from output (it's metadata)
       if (isTectoComment && parts.length > 1) return "";
       
-      const val = escapeLaTeX(vars[key] ?? '');
+      const val = escapeLaTeX(resolveVar(key));
       if (isTectoComment) {
         return val.replace(/\n/g, '\n%% ');
       }
@@ -77,6 +94,7 @@ const CRUMBS = {
   assets: ['Assets'],
   editor: ['Plantillas', 'Editor de plantilla'],
   libre: ['Editor libre'],
+  clients: ['Clientes'],
   settings: ['Ajustes'],
   perfil: ['Perfil'],
 };
@@ -85,7 +103,7 @@ const CRUMBS = {
 function App() {
   const {
     DynamicGenerator, FreeEditor, PlantillasWorkspace, DocumentosScreen,
-    AssetsScreen, SettingsScreen, ProfileScreen, AuthCard, NewDocModal, AppTopBar,
+    AssetsScreen, SettingsScreen, ProfileScreen, AuthCard, NewDocModal, AppTopBar, ClientsScreen,
   } = window.TectoScreens;
   const { LeftRail, StatusBar } = window.TectoChrome;
   const { Docs } = window.TectoDocs;
@@ -112,6 +130,7 @@ function App() {
   const [pdfUrl, setPdfUrl] = React.useState(null);
   const [currentDocId, setCurrentDocId] = React.useState(null);
   const [pendingTemplate, setPendingTemplate] = React.useState(null);
+  const [currentClientSnapshot, setCurrentClientSnapshot] = React.useState(null);
   const autoSaveTimeout = React.useRef(null);
 
   // Free editor
@@ -206,7 +225,7 @@ function App() {
     try { const r = await apiFetch('/assets'); if (r.ok) setAssets(await r.json()); } catch(_) {}
   };
   const loadClients = async () => {
-    try { const r = await apiFetch('/clients'); if (r.ok) setClients(await r.json()); } catch(_) {}
+    try { const r = await apiFetch('/api/clients?active=true'); if (r.ok) setClients(await r.json()); } catch(_) {}
   };
 
   // ── Toast helper ──────────────────────────────────────────────────────────
@@ -226,24 +245,59 @@ function App() {
     } catch(_) { pushToast({ tone:'danger', title:'Error', msg:'No se pudo cargar la plantilla.' }); }
   };
 
-  const handleNewDocCreate = async ({ name, clientId, newClientName }) => {
+  const handleNewDocCreate = async ({ name, clientId, newClient }) => {
     if (!pendingTemplate) return;
     try {
       let resolvedClientId = clientId;
-      if (!clientId && newClientName) {
-        const cr = await apiFetch('/clients', { method:'POST', body: JSON.stringify({ name: newClientName }) });
-        if (cr.ok) { const c = await cr.json(); resolvedClientId = c.id; loadClients(); }
+      let snapshot = null;
+      if (!clientId && newClient) {
+        const cr = await apiFetch('/api/clients', { method:'POST', body: JSON.stringify(newClient) });
+        if (cr.status === 409) {
+          const duplicate = await cr.json();
+          const existing = duplicate?.detail?.client;
+          if (existing && confirm(`Ya existe un cliente posible duplicado: ${existing.name}. ¿Usar el existente?`)) {
+            resolvedClientId = existing.id;
+            snapshot = {
+              id: existing.id, name: existing.name || '', commercialName: existing.commercial_name || '',
+              taxId: existing.tax_id || '', email: existing.email || '', phone: existing.phone || '',
+              address: existing.address || '', contactName: existing.contact_name || '', contactPosition: existing.contact_position || '',
+            };
+          } else {
+            return;
+          }
+        } else if (cr.ok) {
+          const c = await cr.json();
+          resolvedClientId = c.id;
+          snapshot = {
+            id: c.id, name: c.name || '', commercialName: c.commercial_name || '',
+            taxId: c.tax_id || '', email: c.email || '', phone: c.phone || '',
+            address: c.address || '', contactName: c.contact_name || '', contactPosition: c.contact_position || '',
+          };
+          loadClients();
+        } else {
+          throw new Error('No se pudo crear el cliente');
+        }
+      } else if (clientId) {
+        const selected = clients.find(c => c.id === clientId);
+        if (selected) {
+          snapshot = {
+            id: selected.id, name: selected.name || '', commercialName: selected.commercial_name || '',
+            taxId: selected.tax_id || '', email: selected.email || '', phone: selected.phone || '',
+            address: selected.address || '', contactName: selected.contact_name || '', contactPosition: selected.contact_position || '',
+          };
+        }
       }
       const defaults = {};
       for (const f of pendingTemplate.fields || []) defaults[f.key] = f.default || '';
-      const dr = await apiFetch('/docs', { method:'POST', body: JSON.stringify({
-        template_id: pendingTemplate.id, name, data: defaults, engine, client_id: resolvedClientId,
+      const dr = await apiFetch('/api/documents', { method:'POST', body: JSON.stringify({
+        templateId: pendingTemplate.id, name, values: defaults, engine, clientId: resolvedClientId,
       })});
       if (!dr.ok) throw new Error('No se pudo crear el documento');
       const doc = await dr.json();
       setCurrentTemplate(pendingTemplate);
       setFormData(defaults);
       setCurrentDocId(doc.id);
+      setCurrentClientSnapshot(doc.clientSnapshot || snapshot || null);
       setPdfUrl(null); setStatus('idle');
       setPendingTemplate(null);
       setView('generator');
@@ -258,7 +312,7 @@ function App() {
     try {
       const docId = currentDocId || ('doc-' + Math.random().toString(36).slice(2));
       setCurrentDocId(docId);
-      const tex = renderTex(currentTemplate.tex_template, formData);
+      const tex = renderTex(currentTemplate.tex_template, { fields: formData, client: currentClientSnapshot || {} });
       const r = await apiFetch('/compile', { method:'POST', body: JSON.stringify({ id: docId, tex, engine }) });
       const c = await r.json();
       if (c.ok) {
@@ -266,7 +320,7 @@ function App() {
         setStatus('success');
         pushToast({ tone:'success', title:'PDF listo', msg:`Tectonic · ${c.ms}ms` });
         if (docId) {
-          apiFetch(`/docs/${docId}`, { method:'PUT', body: JSON.stringify({ data: formData }) }).catch(()=>{});
+          apiFetch(`/api/documents/${docId}`, { method:'PUT', body: JSON.stringify({ values: formData }) }).catch(()=>{});
         }
         loadDocs();
       } else {
@@ -408,6 +462,7 @@ function App() {
       const tpl = await tplR.json();
       setCurrentTemplate(tpl);
       setFormData(doc.data || {});
+      setCurrentClientSnapshot(doc.client_snapshot || null);
       setCurrentDocId(docId);
       setStatus('idle');
       const head = await fetch(`/download/${docId}`).catch(()=>null);
@@ -458,6 +513,9 @@ function App() {
           {view === 'docs' && (
             <DocumentosScreen templates={templates} docs={docs} onSelectTemplate={selectTemplate}
               onOpenDoc={openDoc} onDeleteDoc={deleteDoc} />
+          )}
+          {view === 'clients' && (
+            <ClientsScreen apiFetch={apiFetch} pushToast={pushToast} onChanged={loadClients} />
           )}
           {view === 'docview' && <Docs />}
           {view === 'generator' && (

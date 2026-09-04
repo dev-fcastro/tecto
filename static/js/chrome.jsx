@@ -73,6 +73,7 @@ function LeftRail({ view, setView, onLogout }) {
   const { Tooltip } = window.TectoDS;
   const items = [
     { id: 'docs', label: 'Documentos', icon: I.Folder },
+    { id: 'clients', label: 'Clientes', icon: I.Building },
     { id: 'templates', label: 'Plantillas', icon: I.Layout },
     { id: 'assets', label: 'Assets', icon: I.Image },
     { id: 'libre', label: 'Editor libre .tex', icon: I.Type },
