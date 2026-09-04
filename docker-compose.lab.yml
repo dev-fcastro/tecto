@@ -13,7 +13,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
-      - "traefik.http.routers.tecto.rule=Host(`tecto.server.synsetsolutions.com`)"
+      - "traefik.http.routers.tecto.rule=Host(`tecto.synsetsolutions.com`)"
       - traefik.http.routers.tecto.entrypoints=websecure
       - traefik.http.routers.tecto.tls.certresolver=le
       - traefik.http.services.tecto.loadbalancer.server.port=8080
