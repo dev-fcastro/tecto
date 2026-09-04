@@ -11,9 +11,10 @@ services:
     volumes:
       - ./config:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks: [synset-public, synset-lab]
+    networks: [proxy]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - "traefik.http.routers.homepage.rule=Host(`lab.server.synsetsolutions.com`)"
       - traefik.http.routers.homepage.entrypoints=websecure
       - traefik.http.routers.homepage.tls.certresolver=le
@@ -22,9 +23,10 @@ services:
   it-tools:
     image: ghcr.io/corentinth/it-tools:latest
     restart: unless-stopped
-    networks: [synset-public, synset-lab]
+    networks: [proxy]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - "traefik.http.routers.it-tools.rule=Host(`tools.server.synsetsolutions.com`)"
       - traefik.http.routers.it-tools.entrypoints=websecure
       - traefik.http.routers.it-tools.tls.certresolver=le
@@ -37,9 +39,10 @@ services:
       - ./data/stirling:/usr/share/tessdata
     environment:
       DOCKER_ENABLE_SECURITY: "false"
-    networks: [synset-public, synset-lab]
+    networks: [proxy]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - "traefik.http.routers.stirling.rule=Host(`pdf.server.synsetsolutions.com`)"
       - traefik.http.routers.stirling.entrypoints=websecure
       - traefik.http.routers.stirling.tls.certresolver=le
@@ -48,9 +51,10 @@ services:
   excalidraw:
     image: excalidraw/excalidraw:latest
     restart: unless-stopped
-    networks: [synset-public, synset-lab]
+    networks: [proxy]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - "traefik.http.routers.excalidraw.rule=Host(`draw.server.synsetsolutions.com`)"
       - traefik.http.routers.excalidraw.entrypoints=websecure
       - traefik.http.routers.excalidraw.tls.certresolver=le
@@ -61,9 +65,10 @@ services:
     restart: unless-stopped
     volumes:
       - actual_data:/data
-    networks: [synset-public, synset-lab]
+    networks: [proxy]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - "traefik.http.routers.budget.rule=Host(`budget.server.synsetsolutions.com`)"
       - traefik.http.routers.budget.entrypoints=websecure
       - traefik.http.routers.budget.tls.certresolver=le
@@ -74,9 +79,10 @@ services:
     restart: unless-stopped
     volumes:
       - memos_data:/var/opt/memos
-    networks: [synset-public, synset-lab]
+    networks: [proxy]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - "traefik.http.routers.memos.rule=Host(`memos.server.synsetsolutions.com`)"
       - traefik.http.routers.memos.entrypoints=websecure
       - traefik.http.routers.memos.tls.certresolver=le
@@ -88,9 +94,10 @@ services:
     volumes:
       - ./data/books:/books
       - kavita_data:/kavita/config
-    networks: [synset-public, synset-lab]
+    networks: [proxy]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - "traefik.http.routers.kavita.rule=Host(`books.server.synsetsolutions.com`)"
       - traefik.http.routers.kavita.entrypoints=websecure
       - traefik.http.routers.kavita.tls.certresolver=le
@@ -106,9 +113,10 @@ services:
       NODE_ENV: production
       database__client: sqlite3
       database__connection__filename: /var/lib/ghost/content/data/ghost.db
-    networks: [synset-public, synset-lab]
+    networks: [proxy]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - "traefik.http.routers.ghost.rule=Host(`blog.server.synsetsolutions.com`)"
       - traefik.http.routers.ghost.entrypoints=websecure
       - traefik.http.routers.ghost.tls.certresolver=le
@@ -119,9 +127,10 @@ services:
     restart: unless-stopped
     volumes:
       - ./config/wikijs.yml:/wiki/config.yml
-    networks: [synset-public, synset-lab, synset-db]
+    networks: [proxy]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - "traefik.http.routers.wikijs.rule=Host(`wiki.server.synsetsolutions.com`)"
       - traefik.http.routers.wikijs.entrypoints=websecure
       - traefik.http.routers.wikijs.tls.certresolver=le
@@ -136,9 +145,10 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://synset_admin:xWdiVJl7y1eJJhcO6S%2FAqfgz1QvPznGs@synset-postgres:5432/tecto
-    networks: [synset-public, synset-lab, synset-db]
+    networks: [proxy]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - "traefik.http.routers.tecto.rule=Host(`tecto.server.synsetsolutions.com`)"
       - traefik.http.routers.tecto.entrypoints=websecure
       - traefik.http.routers.tecto.tls.certresolver=le
@@ -146,11 +156,7 @@ services:
 
 
 networks:
-  synset-public:
-    external: true
-  synset-lab:
-    external: true
-  synset-db:
+  proxy:
     external: true
 
 volumes:
