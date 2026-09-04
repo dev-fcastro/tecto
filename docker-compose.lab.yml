@@ -1,5 +1,17 @@
 services:
 
+  synset-postgres:
+    image: postgres:16-alpine
+    container_name: synset-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: synset_admin
+      POSTGRES_PASSWORD: "xWdiVJl7y1eJJhcO6S/Aqfgz1QvPznGs"
+      POSTGRES_DB: tecto
+    volumes:
+      - synset_postgres_data:/var/lib/postgresql/data
+    networks: [dokploy-network]
+
   tecto:
     image: ghcr.io/dev-fcastro/tecto:latest
     pull_policy: always
@@ -7,6 +19,8 @@ services:
       - tecto_pdfs:/app/pdfs
       - tecto_assets:/app/assets
     restart: unless-stopped
+    depends_on:
+      - synset-postgres
     environment:
       DATABASE_URL: postgresql://synset_admin:xWdiVJl7y1eJJhcO6S%2FAqfgz1QvPznGs@synset-postgres:5432/tecto
     networks: [dokploy-network]
@@ -24,5 +38,6 @@ networks:
     external: true
 
 volumes:
+  synset_postgres_data:
   tecto_pdfs:
   tecto_assets:
