@@ -1044,13 +1044,16 @@ function AuthCard({ screen, setScreen, onAuth }) {
   const I = window.TectoIcons;
 
   const submit = async () => {
-    if (!email || !password) { setError('Email y contraseña son requeridos'); return; }
+    const normalizedEmail = email.trim();
+    const normalizedCompany = company.trim();
+    if (!normalizedEmail || !password) { setError('Email y contraseña son requeridos'); return; }
+    if (screen === 'register' && !normalizedCompany) { setError('La empresa es requerida'); return; }
     setLoading(true); setError('');
     try {
       const url = screen === 'login' ? '/auth/login' : '/auth/register';
       const body = screen === 'login'
-        ? { email, password }
-        : { email, password, full_name: name, company };
+        ? { email: normalizedEmail, password }
+        : { email: normalizedEmail, password, full_name: name.trim(), company: normalizedCompany };
       const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
       const d = await r.json();
       if (!r.ok) { setError(d.detail || 'Error de autenticación'); return; }
@@ -1074,12 +1077,15 @@ function AuthCard({ screen, setScreen, onAuth }) {
           {screen === 'register' && (
             <React.Fragment>
               <Input label="Nombre completo" value={name} onChange={e=>setName(e.target.value)} />
-              <Input label="Empresa (opcional)" value={company} onChange={e=>setCompany(e.target.value)} />
+              <Input label="Empresa / Organización" value={company} onChange={e=>setCompany(e.target.value)}
+                required autoComplete="organization" name="organization" />
             </React.Fragment>
           )}
           <Input label="Correo electrónico" type="email" value={email} onChange={e=>setEmail(e.target.value)}
+            required autoComplete="email" name="email" inputMode="email" autoCapitalize="none" spellCheck={false}
             iconLeft={<I.FileText size={15}/>} onKeyDown={e=>e.key==='Enter'&&submit()} />
           <Input label="Contraseña" type="password" value={password} onChange={e=>setPassword(e.target.value)}
+            required autoComplete={screen==='login' ? 'current-password' : 'new-password'} name="password"
             iconLeft={<I.Lock size={15}/>} onKeyDown={e=>e.key==='Enter'&&submit()} />
           <Button variant="primary" fullWidth onClick={submit} loading={loading} iconRight={<I.Chevron size={15}/>}>
             {screen==='login'?'Entrar':'Crear cuenta'}
