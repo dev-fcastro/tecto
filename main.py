@@ -1060,7 +1060,7 @@ async def archive_client(client_id: str, user=Depends(get_current_user)):
             "UPDATE clients SET is_active=FALSE, updated_at=NOW() WHERE id=$1",
             uuid.UUID(client_id)
         )
-    if updated.endswith("0"):
+    if int(updated.split()[-1]) == 0:
         raise HTTPException(404, "Cliente no encontrado")
     return {"ok": True}
 
