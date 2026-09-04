@@ -9,10 +9,10 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://synset_admin:xWdiVJl7y1eJJhcO6S%2FAqfgz1QvPznGs@synset-postgres:5432/tecto
-    networks: [proxy]
+    networks: [dokploy-network]
     labels:
       - traefik.enable=true
-      - traefik.docker.network=proxy
+      - traefik.docker.network=dokploy-network
       - "traefik.http.routers.tecto.rule=Host(`tecto.server.synsetsolutions.com`)"
       - traefik.http.routers.tecto.entrypoints=websecure
       - traefik.http.routers.tecto.tls.certresolver=le
@@ -20,7 +20,7 @@ services:
 
 
 networks:
-  proxy:
+  dokploy-network:
     external: true
 
 volumes:
