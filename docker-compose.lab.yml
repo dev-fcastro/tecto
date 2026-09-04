@@ -5,8 +5,8 @@ services:
     container_name: synset-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: synset_admin
-      POSTGRES_PASSWORD: "xWdiVJl7y1eJJhcO6S/Aqfgz1QvPznGs"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "postgres"
       POSTGRES_DB: tecto
     volumes:
       - synset_postgres_data:/var/lib/postgresql/data
@@ -22,7 +22,7 @@ services:
     depends_on:
       - synset-postgres
     environment:
-      DATABASE_URL: postgresql://synset_admin:xWdiVJl7y1eJJhcO6S%2FAqfgz1QvPznGs@synset-postgres:5432/tecto
+      DATABASE_URL: ******synset-postgres:5432/tecto
     networks: [dokploy-network]
     labels:
       - traefik.enable=true
