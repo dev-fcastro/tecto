@@ -73,9 +73,46 @@ async def startup():
             CREATE TABLE IF NOT EXISTS clients (
               id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
               name TEXT NOT NULL,
-              created_at TIMESTAMPTZ DEFAULT NOW()
+              commercial_name TEXT,
+              tax_id TEXT,
+              email TEXT,
+              phone TEXT,
+              address TEXT,
+              contact_name TEXT,
+              contact_position TEXT,
+              notes TEXT,
+              tax_id_normalized TEXT,
+              email_normalized TEXT,
+              phone_normalized TEXT,
+              name_normalized TEXT,
+              is_active BOOLEAN NOT NULL DEFAULT TRUE,
+              created_at TIMESTAMPTZ DEFAULT NOW(),
+              updated_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS commercial_name TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS tax_id TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS address TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_name TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_position TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS notes TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS tax_id_normalized TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS email_normalized TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone_normalized TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS name_normalized TEXT")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
+        await conn.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()")
+        await conn.execute("UPDATE clients SET name_normalized=lower(trim(name)) WHERE name_normalized IS NULL")
+        await conn.execute("UPDATE clients SET tax_id_normalized=regexp_replace(coalesce(tax_id,''),'\\s+','','g') WHERE tax_id_normalized IS NULL")
+        await conn.execute("UPDATE clients SET email_normalized=lower(trim(coalesce(email,''))) WHERE email_normalized IS NULL")
+        await conn.execute("UPDATE clients SET phone_normalized=regexp_replace(coalesce(phone,''),'\\D+','','g') WHERE phone_normalized IS NULL")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_active_name ON clients (is_active, name)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_tax_norm ON clients (tax_id_normalized)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_email_norm ON clients (email_normalized)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_phone_norm ON clients (phone_normalized)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_name_norm ON clients (name_normalized)")
         # Users table
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -112,11 +149,13 @@ async def startup():
               data JSONB DEFAULT '{}',
               tex TEXT NOT NULL DEFAULT '',
               engine TEXT NOT NULL DEFAULT 'XeLaTeX',
+              client_snapshot JSONB,
               updated_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
         await conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL")
         await conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clients(id) ON DELETE SET NULL")
+        await conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS client_snapshot JSONB")
         # Compile runs
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS compile_runs (
@@ -151,6 +190,27 @@ def render_template(tex_template: str, data: dict) -> str:
     def escape_latex(val):
         return regex_esc.sub(lambda match: escape_map[match.group(0)], str(val))
 
+    def resolve_key(raw_key: str):
+        key = (raw_key or "").strip()
+        if not key:
+            return ""
+        if "." in key:
+            node = data
+            for part in key.split("."):
+                if isinstance(node, dict) and part in node:
+                    node = node.get(part)
+                else:
+                    node = None
+                    break
+            if node is not None:
+                return node
+        fields = data.get("fields", {}) if isinstance(data, dict) else {}
+        if isinstance(fields, dict) and key in fields:
+            return fields.get(key, "")
+        if isinstance(data, dict) and key in data:
+            return data.get(key, "")
+        return ""
+
     # Process line by line to detect comment context
     lines = tex_template.split('\n')
     processed_lines = []
@@ -167,7 +227,7 @@ def render_template(tex_template: str, data: dict) -> str:
             if is_tecto_comment and len(parts) > 1:
                 return ""
             
-            val = data.get(key, f"[{key}]")
+            val = resolve_key(key)
             escaped_val = escape_latex(val)
             
             if is_tecto_comment:
@@ -198,7 +258,7 @@ def parse_fields_from_tex(tex: str) -> list:
     lines = tex.splitlines()
 
     def _add(key, label, ftype, default, section, parts):
-        if key in seen:
+        if key in seen or key.startswith("client."):
             return
         field = {"key": key, "label": label, "type": ftype,
                  "default": default, "section": section}
@@ -251,6 +311,58 @@ def parse_fields_from_tex(tex: str) -> list:
                  current_section, parts)
 
     return [seen[k] for k in order]
+
+def normalize_tax_id(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    cleaned = re.sub(r"\s+", "", value.strip())
+    return cleaned or None
+
+def normalize_email(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    cleaned = value.strip().lower()
+    return cleaned or None
+
+def normalize_phone(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    cleaned = re.sub(r"\D+", "", value)
+    return cleaned or None
+
+def normalize_name(value: Optional[str]) -> str:
+    if value is None:
+        return ""
+    cleaned = value.strip().lower()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned
+
+def strip_or_none(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned if cleaned else None
+
+def build_client_snapshot(client_row: dict) -> dict:
+    return {
+        "id": str(client_row["id"]),
+        "name": client_row.get("name") or "",
+        "commercialName": client_row.get("commercial_name") or "",
+        "taxId": client_row.get("tax_id") or "",
+        "email": client_row.get("email") or "",
+        "phone": client_row.get("phone") or "",
+        "address": client_row.get("address") or "",
+        "contactName": client_row.get("contact_name") or "",
+        "contactPosition": client_row.get("contact_position") or "",
+    }
+
+def build_template_context(fields: dict, client_snapshot: Optional[dict]) -> dict:
+    safe_fields = fields if isinstance(fields, dict) else {}
+    return {
+        "client": client_snapshot or {},
+        "fields": safe_fields,
+        **safe_fields,
+    }
 
 # ── Template content ──────────────────────────────────────────────────────────
 COTIZACION_TEMPLATE = r"""
@@ -715,23 +827,242 @@ async def seed_templates():
 # ── Clients ───────────────────────────────────────────────────────────────────
 class ClientCreate(BaseModel):
     name: str
+    commercial_name: Optional[str] = None
+    tax_id: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_position: Optional[str] = None
+    notes: Optional[str] = None
+    ignore_duplicates: bool = False
+
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    commercial_name: Optional[str] = None
+    tax_id: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_position: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+def serialize_client(row: dict) -> dict:
+    data = dict(row)
+    data["id"] = str(data["id"])
+    if data.get("created_at"):
+        data["created_at"] = data["created_at"].isoformat()
+    if data.get("updated_at"):
+        data["updated_at"] = data["updated_at"].isoformat()
+    for k in ("tax_id_normalized", "email_normalized", "phone_normalized", "name_normalized"):
+        data.pop(k, None)
+    return data
+
+async def find_duplicate_client(conn, *, name: str, tax_id_norm: Optional[str], email_norm: Optional[str], phone_norm: Optional[str], exclude_id: Optional[str] = None):
+    base_exclude = ""
+    args = []
+    if exclude_id:
+        base_exclude = " AND id <> $2"
+        args.append(uuid.UUID(exclude_id))
+
+    if tax_id_norm:
+        q = f"SELECT * FROM clients WHERE is_active=TRUE AND tax_id_normalized=$1{base_exclude} ORDER BY updated_at DESC LIMIT 1"
+        row = await conn.fetchrow(q, tax_id_norm, *args)
+        if row:
+            return "tax_id", row
+    if email_norm:
+        q = f"SELECT * FROM clients WHERE is_active=TRUE AND email_normalized=$1{base_exclude} ORDER BY updated_at DESC LIMIT 1"
+        row = await conn.fetchrow(q, email_norm, *args)
+        if row:
+            return "email", row
+    if phone_norm:
+        q = f"SELECT * FROM clients WHERE is_active=TRUE AND phone_normalized=$1{base_exclude} ORDER BY updated_at DESC LIMIT 1"
+        row = await conn.fetchrow(q, phone_norm, *args)
+        if row:
+            return "phone", row
+    name_norm = normalize_name(name)
+    if name_norm:
+        q = f"SELECT * FROM clients WHERE is_active=TRUE AND name_normalized LIKE $1{base_exclude} ORDER BY updated_at DESC LIMIT 1"
+        row = await conn.fetchrow(q, f"%{name_norm}%", *args)
+        if row:
+            return "name", row
+    return None, None
 
 @app.get("/clients")
-async def list_clients(user=Depends(get_current_user)):
+@app.get("/api/clients")
+async def list_clients(search: Optional[str] = None, active: bool = True, user=Depends(get_current_user)):
+    filters = []
+    params = []
+    if active:
+        filters.append("is_active=TRUE")
+    if search and search.strip():
+        s = f"%{search.strip().lower()}%"
+        base = len(params) + 1
+        params.extend([s, s, s, s, s])
+        filters.append(
+            "(lower(name) LIKE $%d OR lower(coalesce(commercial_name,'')) LIKE $%d OR "
+            "lower(coalesce(tax_id,'')) LIKE $%d OR lower(coalesce(email,'')) LIKE $%d OR "
+            "lower(coalesce(phone,'')) LIKE $%d)" % (base, base + 1, base + 2, base + 3, base + 4)
+        )
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    query = f"""
+        SELECT id, name, commercial_name, tax_id, email, phone, address, contact_name, contact_position, notes,
+               is_active, created_at, updated_at
+        FROM clients {where}
+        ORDER BY name
+    """
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT id, name, created_at FROM clients ORDER BY name")
-    return [dict(r) for r in rows]
+        rows = await conn.fetch(query, *params)
+    return [serialize_client(dict(r)) for r in rows]
+
+@app.get("/clients/{client_id}")
+@app.get("/api/clients/{client_id}")
+async def get_client(client_id: str, user=Depends(get_current_user)):
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT id, name, commercial_name, tax_id, email, phone, address, contact_name, contact_position, notes,
+                   is_active, created_at, updated_at, tax_id_normalized, email_normalized, phone_normalized, name_normalized
+            FROM clients WHERE id=$1
+        """, uuid.UUID(client_id))
+    if not row:
+        raise HTTPException(404, "Cliente no encontrado")
+    return serialize_client(dict(row))
 
 @app.post("/clients")
+@app.post("/api/clients")
 async def create_client(body: ClientCreate, user=Depends(get_current_user)):
-    if not body.name.strip():
+    name = (body.name or "").strip()
+    if not name:
         raise HTTPException(400, "El nombre no puede estar vacío")
+    tax_id = strip_or_none(body.tax_id)
+    email = strip_or_none(body.email)
+    phone = strip_or_none(body.phone)
+    tax_id_norm = normalize_tax_id(tax_id)
+    email_norm = normalize_email(email)
+    phone_norm = normalize_phone(phone)
+    name_norm = normalize_name(name)
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "INSERT INTO clients (name) VALUES ($1) RETURNING id, name",
-            body.name.strip()
+        match_type, dup = await find_duplicate_client(
+            conn,
+            name=name,
+            tax_id_norm=tax_id_norm,
+            email_norm=email_norm,
+            phone_norm=phone_norm,
         )
-    return dict(row)
+        if dup and not body.ignore_duplicates:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "DUPLICATE_CLIENT",
+                    "matchType": match_type,
+                    "client": serialize_client(dict(dup)),
+                },
+            )
+        row = await conn.fetchrow("""
+            INSERT INTO clients (
+                name, commercial_name, tax_id, email, phone, address, contact_name, contact_position, notes,
+                tax_id_normalized, email_normalized, phone_normalized, name_normalized, is_active, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,TRUE,NOW())
+            RETURNING id, name, commercial_name, tax_id, email, phone, address, contact_name, contact_position, notes,
+                      is_active, created_at, updated_at, tax_id_normalized, email_normalized, phone_normalized, name_normalized
+        """,
+        name, strip_or_none(body.commercial_name), tax_id, email, phone,
+        strip_or_none(body.address), strip_or_none(body.contact_name), strip_or_none(body.contact_position), strip_or_none(body.notes),
+        tax_id_norm, email_norm, phone_norm, name_norm)
+    return serialize_client(dict(row))
+
+@app.put("/clients/{client_id}")
+@app.put("/api/clients/{client_id}")
+async def update_client(client_id: str, body: ClientUpdate, user=Depends(get_current_user)):
+    updates = body.dict(exclude_unset=True)
+    if not updates:
+        return {"ok": True}
+    if "name" in updates:
+        updates["name"] = (updates["name"] or "").strip()
+        if not updates["name"]:
+            raise HTTPException(400, "El nombre no puede estar vacío")
+    for key in ("commercial_name", "tax_id", "email", "phone", "address", "contact_name", "contact_position", "notes"):
+        if key in updates:
+            updates[key] = strip_or_none(updates[key])
+    tax_id_norm = normalize_tax_id(updates.get("tax_id")) if "tax_id" in updates else None
+    email_norm = normalize_email(updates.get("email")) if "email" in updates else None
+    phone_norm = normalize_phone(updates.get("phone")) if "phone" in updates else None
+    name_for_dup = updates["name"] if "name" in updates else None
+
+    async with pool.acquire() as conn:
+        current = await conn.fetchrow("SELECT * FROM clients WHERE id=$1", uuid.UUID(client_id))
+        if not current:
+            raise HTTPException(404, "Cliente no encontrado")
+        if name_for_dup is None:
+            name_for_dup = current["name"]
+        if tax_id_norm is None and "tax_id" not in updates:
+            tax_id_norm = current.get("tax_id_normalized")
+        if email_norm is None and "email" not in updates:
+            email_norm = current.get("email_normalized")
+        if phone_norm is None and "phone" not in updates:
+            phone_norm = current.get("phone_normalized")
+        match_type, dup = await find_duplicate_client(
+            conn,
+            name=name_for_dup,
+            tax_id_norm=tax_id_norm,
+            email_norm=email_norm,
+            phone_norm=phone_norm,
+            exclude_id=client_id,
+        )
+        if dup:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "DUPLICATE_CLIENT",
+                    "matchType": match_type,
+                    "client": serialize_client(dict(dup)),
+                },
+            )
+        sets = []
+        vals = [uuid.UUID(client_id)]
+        idx = 2
+        for key, val in updates.items():
+            sets.append(f"{key}=${idx}")
+            vals.append(val)
+            idx += 1
+        if "tax_id" in updates:
+            sets.append(f"tax_id_normalized=${idx}")
+            vals.append(tax_id_norm)
+            idx += 1
+        if "email" in updates:
+            sets.append(f"email_normalized=${idx}")
+            vals.append(email_norm)
+            idx += 1
+        if "phone" in updates:
+            sets.append(f"phone_normalized=${idx}")
+            vals.append(phone_norm)
+            idx += 1
+        if "name" in updates:
+            sets.append(f"name_normalized=${idx}")
+            vals.append(normalize_name(updates["name"]))
+            idx += 1
+        sets.append("updated_at=NOW()")
+        await conn.execute(f"UPDATE clients SET {', '.join(sets)} WHERE id=$1", *vals)
+        row = await conn.fetchrow("""
+            SELECT id, name, commercial_name, tax_id, email, phone, address, contact_name, contact_position, notes,
+                   is_active, created_at, updated_at, tax_id_normalized, email_normalized, phone_normalized, name_normalized
+            FROM clients WHERE id=$1
+        """, uuid.UUID(client_id))
+    return serialize_client(dict(row))
+
+@app.delete("/clients/{client_id}")
+@app.delete("/api/clients/{client_id}")
+async def archive_client(client_id: str, user=Depends(get_current_user)):
+    async with pool.acquire() as conn:
+        updated = await conn.execute(
+            "UPDATE clients SET is_active=FALSE, updated_at=NOW() WHERE id=$1",
+            uuid.UUID(client_id)
+        )
+    if int(updated.split()[-1]) == 0:
+        raise HTTPException(404, "Cliente no encontrado")
+    return {"ok": True}
 
 # ── Auth endpoints ────────────────────────────────────────────────────────────
 class RegisterBody(BaseModel):
@@ -1015,24 +1346,30 @@ async def delete_template(tpl_id: str, user=Depends(get_current_user)):
 
 # ── Documents ─────────────────────────────────────────────────────────────────
 class DocFromTemplate(BaseModel):
-    template_id: str
+    template_id: Optional[str] = None
+    templateId: Optional[str] = None
     name: str
-    data: dict
+    data: Optional[dict] = None
+    values: Optional[dict] = None
     engine: str = "XeLaTeX"
     client_id: Optional[str] = None
+    clientId: Optional[str] = None
 
 class DocUpdate(BaseModel):
     name: Optional[str] = None
     data: Optional[dict] = None
+    values: Optional[dict] = None
     tex: Optional[str] = None
     engine: Optional[str] = None
     client_id: Optional[str] = None
+    clientId: Optional[str] = None
 
 @app.get("/docs")
+@app.get("/api/documents")
 async def list_docs(user=Depends(get_current_user)):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT d.id, d.name, d.engine, d.updated_at, d.data, d.client_id, "
+            "SELECT d.id, d.name, d.engine, d.updated_at, d.data, d.client_id, d.client_snapshot, "
             "c.name as client_name, "
             "t.name as template_name, t.id as template_id, t.category, t.color "
             "FROM documents d "
@@ -1046,8 +1383,12 @@ async def list_docs(user=Depends(get_current_user)):
             d["updated_at"] = d["updated_at"].isoformat()
         raw = d.get("data") or {}
         data = json.loads(raw) if isinstance(raw, str) else raw
-        # Use explicit client_name from clients table, fallback to data fields
-        if not d.get("client_name"):
+        snap_raw = d.get("client_snapshot")
+        snapshot = json.loads(snap_raw) if isinstance(snap_raw, str) else (snap_raw or None)
+        d["client_snapshot"] = snapshot
+        if snapshot and snapshot.get("name"):
+            d["client_name"] = snapshot.get("name")
+        elif not d.get("client_name"):
             d["client_name"] = (
                 data.get("cliente_nombre") or data.get("cliente") or
                 data.get("proyecto_nombre") or data.get("proveedor_nombre") or ""
@@ -1057,64 +1398,105 @@ async def list_docs(user=Depends(get_current_user)):
     return result
 
 @app.post("/docs")
+@app.post("/api/documents")
 async def create_doc_from_template(body: DocFromTemplate, user=Depends(get_current_user)):
+    template_id = body.template_id or body.templateId
+    if not template_id:
+        raise HTTPException(400, "template_id es requerido")
     doc_id = str(uuid.uuid4())
+    input_values = body.data or body.values or {}
+    resolved_client_id = body.client_id if body.client_id is not None else body.clientId
     async with pool.acquire() as conn:
-        tpl = await conn.fetchrow("SELECT * FROM templates WHERE id=$1", body.template_id)
+        tpl = await conn.fetchrow("SELECT * FROM templates WHERE id=$1", template_id)
         if not tpl:
             raise HTTPException(404, "Plantilla no encontrada")
+        client_snapshot = None
+        if resolved_client_id:
+            client = await conn.fetchrow("SELECT * FROM clients WHERE id=$1 AND is_active=TRUE", uuid.UUID(resolved_client_id))
+            if not client:
+                raise HTTPException(404, "Cliente no encontrado")
+            client_snapshot = build_client_snapshot(dict(client))
         fields = json.loads(tpl["fields"]) if isinstance(tpl["fields"], str) else (tpl["fields"] or [])
         defaults = {f["key"]: f.get("default", "") for f in fields}
-        merged = {**defaults, **body.data}
-        tex = render_template(tpl["tex_template"], merged)
+        merged = {**defaults, **input_values}
+        context = build_template_context(merged, client_snapshot)
+        tex = render_template(tpl["tex_template"], context)
         await conn.execute("""
-            INSERT INTO documents (id, template_id, name, data, tex, engine, user_id, client_id, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-        """, doc_id, body.template_id, body.name, json.dumps(merged), tex, body.engine,
-            user["id"], body.client_id)
-    return {"id": doc_id, "name": body.name, "tex": tex, "client_id": body.client_id}
+            INSERT INTO documents (id, template_id, name, data, tex, engine, user_id, client_id, client_snapshot, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+        """, doc_id, template_id, body.name, json.dumps(merged), tex, body.engine,
+            user["id"], resolved_client_id, json.dumps(client_snapshot) if client_snapshot else None)
+    return {"id": doc_id, "name": body.name, "tex": tex, "client_id": resolved_client_id, "clientSnapshot": client_snapshot}
 
 @app.get("/docs/{doc_id}")
+@app.get("/api/documents/{doc_id}")
 async def get_doc(doc_id: str, user=Depends(get_current_user)):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT d.*, t.name as template_name, t.fields, t.tex_template "
-            "FROM documents d LEFT JOIN templates t ON d.template_id=t.id WHERE d.id=$1", doc_id)
+            "SELECT d.*, t.name as template_name, t.fields, t.tex_template, c.name as current_client_name "
+            "FROM documents d "
+            "LEFT JOIN templates t ON d.template_id=t.id "
+            "LEFT JOIN clients c ON d.client_id=c.id "
+            "WHERE d.id=$1", doc_id)
     if not row:
         raise HTTPException(404)
     d = dict(row)
     d["data"] = json.loads(d["data"]) if isinstance(d.get("data"), str) else (d.get("data") or {})
     d["fields"] = json.loads(d["fields"]) if isinstance(d.get("fields"), str) else (d.get("fields") or [])
+    d["client_snapshot"] = json.loads(d["client_snapshot"]) if isinstance(d.get("client_snapshot"), str) else d.get("client_snapshot")
+    if d.get("client_snapshot", {}).get("name"):
+        d["client_name"] = d["client_snapshot"]["name"]
+    else:
+        d["client_name"] = d.get("current_client_name") or ""
     if d.get("updated_at"):
         d["updated_at"] = d["updated_at"].isoformat()
     return d
 
 @app.put("/docs/{doc_id}")
+@app.put("/api/documents/{doc_id}")
 async def update_doc(doc_id: str, body: DocUpdate, user=Depends(get_current_user)):
+    payload = body.dict(exclude_unset=True)
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM documents WHERE id=$1", doc_id)
         if not row:
             raise HTTPException(404)
-        if body.data is not None:
+        client_field_sent = "client_id" in payload or "clientId" in payload
+        data_field_sent = "data" in payload or "values" in payload
+        resolved_client_id = payload.get("client_id") if "client_id" in payload else payload.get("clientId")
+        if client_field_sent:
+            client_snapshot = None
+            if resolved_client_id:
+                client = await conn.fetchrow("SELECT * FROM clients WHERE id=$1 AND is_active=TRUE", uuid.UUID(resolved_client_id))
+                if not client:
+                    raise HTTPException(404, "Cliente no encontrado")
+                client_snapshot = build_client_snapshot(dict(client))
+            await conn.execute(
+                "UPDATE documents SET client_id=$2, client_snapshot=$3, updated_at=NOW() WHERE id=$1",
+                doc_id, resolved_client_id, json.dumps(client_snapshot) if client_snapshot else None
+            )
+            row = await conn.fetchrow("SELECT * FROM documents WHERE id=$1", doc_id)
+        if data_field_sent:
             tpl = await conn.fetchrow("SELECT * FROM templates WHERE id=$1", row["template_id"])
             if tpl:
                 current = json.loads(row["data"]) if isinstance(row.get("data"), str) else (row.get("data") or {})
-                merged = {**current, **body.data}
-                rendered = render_template(tpl["tex_template"], merged)
+                incoming_data = payload.get("data") if "data" in payload else payload.get("values")
+                merged = {**current, **(incoming_data or {})}
+                snap_raw = row.get("client_snapshot")
+                client_snapshot = json.loads(snap_raw) if isinstance(snap_raw, str) else (snap_raw or None)
+                rendered = render_template(tpl["tex_template"], build_template_context(merged, client_snapshot))
                 await conn.execute("UPDATE documents SET data=$2, tex=$3, updated_at=NOW() WHERE id=$1",
                                   doc_id, json.dumps(merged), rendered)
                 return {"ok": True, "tex": rendered}
-        if body.tex is not None:
-            await conn.execute("UPDATE documents SET tex=$2, updated_at=NOW() WHERE id=$1", doc_id, body.tex)
-        if body.name is not None:
-            await conn.execute("UPDATE documents SET name=$2 WHERE id=$1", doc_id, body.name)
-        if body.engine is not None:
-            await conn.execute("UPDATE documents SET engine=$2 WHERE id=$1", doc_id, body.engine)
-        if body.client_id is not None:
-            await conn.execute("UPDATE documents SET client_id=$2 WHERE id=$1", doc_id, body.client_id)
+        if "tex" in payload:
+            await conn.execute("UPDATE documents SET tex=$2, updated_at=NOW() WHERE id=$1", doc_id, payload["tex"])
+        if "name" in payload:
+            await conn.execute("UPDATE documents SET name=$2 WHERE id=$1", doc_id, payload["name"])
+        if "engine" in payload:
+            await conn.execute("UPDATE documents SET engine=$2 WHERE id=$1", doc_id, payload["engine"])
     return {"ok": True}
 
 @app.delete("/docs/{doc_id}")
+@app.delete("/api/documents/{doc_id}")
 async def delete_doc(doc_id: str, user=Depends(get_current_user)):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM documents WHERE id=$1", doc_id)

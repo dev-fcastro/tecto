@@ -129,7 +129,7 @@
 
 /* Modal */
 .tk-modal-ov { position:fixed;inset:0;background:rgba(0,0,0,.38);z-index:400;display:flex;align-items:center;justify-content:center; }
-.tk-modal { background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-xl);padding:26px;width:420px;display:flex;flex-direction:column;gap:14px; }
+.tk-modal { background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-xl);padding:26px;width:min(720px,92vw);max-height:90vh;overflow:auto;display:flex;flex-direction:column;gap:14px; }
 .tk-modal__title { font-family:var(--font-serif);font-size:18px;font-weight:600;color:var(--ink-strong); }
 .tk-modal__field { display:flex;flex-direction:column;gap:5px; }
 .tk-modal__label { font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-muted); }
@@ -157,13 +157,25 @@ const NEW_CLIENT_SENTINEL = '__new__';
 
 function NewDocModal({ templateName, clients, onClose, onCreate }) {
   const [docName, setDocName] = React.useState('');
+  const [search, setSearch] = React.useState('');
   const [clientId, setClientId] = React.useState(clients.length > 0 ? clients[0].id : NEW_CLIENT_SENTINEL);
-  const [newClientName, setNewClientName] = React.useState('');
+  const [newClient, setNewClient] = React.useState({
+    name: '', commercial_name: '', tax_id: '', email: '', phone: '', address: '',
+    contact_name: '', contact_position: '', notes: '',
+  });
   const [saving, setSaving] = React.useState(false);
   const { Button } = window.TectoDS;
   const isNew = clientId === NEW_CLIENT_SENTINEL;
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredClients = normalizedSearch
+    ? clients.filter(c =>
+      [c.name, c.commercial_name, c.tax_id, c.email, c.phone]
+        .filter(Boolean)
+        .some(v => String(v).toLowerCase().includes(normalizedSearch)))
+    : clients;
+  const selectedClient = filteredClients.find(c => c.id === clientId) || clients.find(c => c.id === clientId) || null;
 
-  const canSubmit = docName.trim() && (!isNew || newClientName.trim());
+  const canSubmit = docName.trim() && (!isNew || newClient.name.trim());
 
   const handleCreate = async () => {
     if (!canSubmit) return;
@@ -172,7 +184,18 @@ function NewDocModal({ templateName, clients, onClose, onCreate }) {
       await onCreate({
         name: docName.trim(),
         clientId: isNew ? null : clientId,
-        newClientName: isNew ? newClientName.trim() : null,
+        newClient: isNew ? {
+          ...newClient,
+          name: newClient.name.trim(),
+          commercial_name: newClient.commercial_name.trim(),
+          tax_id: newClient.tax_id.trim(),
+          email: newClient.email.trim(),
+          phone: newClient.phone.trim(),
+          address: newClient.address.trim(),
+          contact_name: newClient.contact_name.trim(),
+          contact_position: newClient.contact_position.trim(),
+          notes: newClient.notes.trim(),
+        } : null,
       });
     } finally {
       setSaving(false);
@@ -193,18 +216,68 @@ function NewDocModal({ templateName, clients, onClose, onCreate }) {
 
         <div className="tk-modal__field">
           <label className="tk-modal__label">Cliente</label>
-          <select className="tk-modal__input" value={clientId} onChange={e => setClientId(e.target.value)}>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            <option value={NEW_CLIENT_SENTINEL}>+ Nuevo cliente…</option>
+          <input className="tk-modal__input" placeholder="Buscar por nombre, RNC, email o teléfono"
+            value={search} onChange={e => setSearch(e.target.value)} />
+          <select className="tk-modal__input" value={clientId} onChange={e => setClientId(e.target.value)} style={{marginTop:8}}>
+            {filteredClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <option value={NEW_CLIENT_SENTINEL}>+ Crear nuevo cliente…</option>
           </select>
         </div>
 
         {isNew && (
-          <div className="tk-modal__field">
-            <label className="tk-modal__label">Nombre del nuevo cliente</label>
-            <input className="tk-modal__input" placeholder="Empresa S.A."
-              value={newClientName} onChange={e => setNewClientName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && canSubmit) handleCreate(); if (e.key === 'Escape') onClose(); }} />
+          <>
+            <div className="tk-modal__field">
+              <label className="tk-modal__label">Nombre / Razón social *</label>
+              <input className="tk-modal__input" placeholder="Empresa S.A."
+                value={newClient.name} onChange={e => setNewClient(s => ({ ...s, name: e.target.value }))}
+                onKeyDown={e => { if (e.key === 'Enter' && canSubmit) handleCreate(); if (e.key === 'Escape') onClose(); }} />
+            </div>
+            <div className="tk-dyn__grid2">
+              <div className="tk-modal__field">
+                <label className="tk-modal__label">Nombre comercial</label>
+                <input className="tk-modal__input" value={newClient.commercial_name} onChange={e => setNewClient(s => ({ ...s, commercial_name: e.target.value }))} />
+              </div>
+              <div className="tk-modal__field">
+                <label className="tk-modal__label">RNC / Cédula</label>
+                <input className="tk-modal__input" value={newClient.tax_id} onChange={e => setNewClient(s => ({ ...s, tax_id: e.target.value }))} />
+              </div>
+            </div>
+            <div className="tk-dyn__grid2">
+              <div className="tk-modal__field">
+                <label className="tk-modal__label">Email</label>
+                <input className="tk-modal__input" value={newClient.email} onChange={e => setNewClient(s => ({ ...s, email: e.target.value }))} />
+              </div>
+              <div className="tk-modal__field">
+                <label className="tk-modal__label">Teléfono</label>
+                <input className="tk-modal__input" value={newClient.phone} onChange={e => setNewClient(s => ({ ...s, phone: e.target.value }))} />
+              </div>
+            </div>
+            <div className="tk-modal__field">
+              <label className="tk-modal__label">Dirección</label>
+              <input className="tk-modal__input" value={newClient.address} onChange={e => setNewClient(s => ({ ...s, address: e.target.value }))} />
+            </div>
+            <div className="tk-dyn__grid2">
+              <div className="tk-modal__field">
+                <label className="tk-modal__label">Persona de contacto</label>
+                <input className="tk-modal__input" value={newClient.contact_name} onChange={e => setNewClient(s => ({ ...s, contact_name: e.target.value }))} />
+              </div>
+              <div className="tk-modal__field">
+                <label className="tk-modal__label">Cargo del contacto</label>
+                <input className="tk-modal__input" value={newClient.contact_position} onChange={e => setNewClient(s => ({ ...s, contact_position: e.target.value }))} />
+              </div>
+            </div>
+            <div className="tk-modal__field">
+              <label className="tk-modal__label">Notas</label>
+              <textarea className="tk-modal__input" rows={3} style={{height:'auto',padding:'10px'}}
+                value={newClient.notes} onChange={e => setNewClient(s => ({ ...s, notes: e.target.value }))} />
+            </div>
+          </>
+        )}
+        {!isNew && selectedClient && (
+          <div style={{fontFamily:'var(--font-sans)',fontSize:12,color:'var(--ink-muted)',padding:'6px 0'}}>
+            {(selectedClient.tax_id || selectedClient.email || selectedClient.phone) && (
+              <span>{[selectedClient.tax_id, selectedClient.email, selectedClient.phone].filter(Boolean).join(' · ')}</span>
+            )}
           </div>
         )}
 
@@ -786,6 +859,162 @@ function DocumentosScreen({ onSelectTemplate, docs, templates, onOpenDoc, onDele
   );
 }
 
+// ── ClientsScreen ─────────────────────────────────────────────────────────────
+function ClientsScreen({ apiFetch, pushToast, onChanged }) {
+  const I = window.TectoIcons;
+  const [clients, setClients] = React.useState([]);
+  const [search, setSearch] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [editing, setEditing] = React.useState(null);
+  const [form, setForm] = React.useState({
+    name: '', commercial_name: '', tax_id: '', email: '', phone: '', address: '',
+    contact_name: '', contact_position: '', notes: '',
+  });
+
+  const load = React.useCallback(async (q = '') => {
+    setLoading(true);
+    try {
+      const r = await apiFetch('/api/clients?active=true' + (q ? `&search=${encodeURIComponent(q)}` : ''));
+      if (r.ok) setClients(await r.json());
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+
+  React.useEffect(() => { load(''); }, [load]);
+
+  const resetForm = () => {
+    setEditing(null);
+    setForm({
+      name: '', commercial_name: '', tax_id: '', email: '', phone: '', address: '',
+      contact_name: '', contact_position: '', notes: '',
+    });
+  };
+
+  const save = async () => {
+    if (!form.name.trim()) {
+      pushToast({ tone:'warning', title:'Nombre requerido', msg:'Completa el nombre del cliente.' });
+      return;
+    }
+    const payload = { ...form };
+    const url = editing ? `/api/clients/${editing.id}` : '/api/clients';
+    const method = editing ? 'PUT' : 'POST';
+    let r = await apiFetch(url, { method, body: JSON.stringify(payload) });
+    if (r.status === 409 && !editing) {
+      const dup = await r.json();
+      const existing = dup?.detail?.client;
+      if (existing && confirm(`Posible duplicado: ${existing.name}. ¿Crear de todos modos?`)) {
+        r = await apiFetch('/api/clients', { method:'POST', body: JSON.stringify({ ...payload, ignore_duplicates: true }) });
+      } else {
+        return;
+      }
+    }
+    if (!r.ok) {
+      pushToast({ tone:'danger', title:'Error', msg:'No se pudo guardar el cliente.' });
+      return;
+    }
+    pushToast({ tone:'success', title: editing ? 'Cliente actualizado' : 'Cliente creado', msg: form.name });
+    resetForm();
+    await load(search);
+    onChanged && onChanged();
+  };
+
+  const editClient = (c) => {
+    setEditing(c);
+    setForm({
+      name: c.name || '',
+      commercial_name: c.commercial_name || '',
+      tax_id: c.tax_id || '',
+      email: c.email || '',
+      phone: c.phone || '',
+      address: c.address || '',
+      contact_name: c.contact_name || '',
+      contact_position: c.contact_position || '',
+      notes: c.notes || '',
+    });
+  };
+
+  const archiveClient = async (c) => {
+    if (!confirm(`¿Archivar "${c.name}"?`)) return;
+    const r = await apiFetch(`/api/clients/${c.id}`, { method:'DELETE' });
+    if (r.ok) {
+      pushToast({ tone:'success', title:'Cliente archivado', msg:c.name });
+      load(search);
+      onChanged && onChanged();
+    } else {
+      pushToast({ tone:'danger', title:'Error', msg:'No se pudo archivar.' });
+    }
+  };
+
+  return (
+    <div className="tk-ws">
+      <div className="tk-ws__in">
+        <div className="tk-ws__head">
+          <div>
+            <h1 className="tk-ws__title">Clientes</h1>
+            <p className="tk-ws__sub">Gestiona clientes reutilizables para todos tus documentos.</p>
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginTop:18}}>
+          <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-lg)',padding:14}}>
+            <div style={{display:'flex',gap:8,marginBottom:10}}>
+              <input className="tk-modal__input" placeholder="Buscar cliente..." value={search}
+                onChange={e=>setSearch(e.target.value)}
+                onKeyDown={e=>{ if (e.key==='Enter') load(search); }} />
+              <button onClick={()=>load(search)} style={{padding:'0 10px',border:'1px solid var(--border)',borderRadius:8,background:'var(--surface)',cursor:'pointer'}}>
+                <I.Search size={14}/>
+              </button>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:'55vh',overflow:'auto'}}>
+              {loading ? <div style={{fontFamily:'var(--font-mono)',fontSize:12,color:'var(--ink-subtle)'}}>Cargando...</div> : null}
+              {!loading && clients.length===0 ? <div style={{fontFamily:'var(--font-mono)',fontSize:12,color:'var(--ink-subtle)'}}>Sin resultados.</div> : null}
+              {clients.map(c => (
+                <div key={c.id} style={{border:'1px solid var(--border)',borderRadius:8,padding:'10px 11px',display:'flex',gap:8,alignItems:'center'}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontFamily:'var(--font-sans)',fontSize:13,fontWeight:600,color:'var(--ink-strong)'}}>{c.name}</div>
+                    <div style={{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--ink-subtle)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {[c.tax_id, c.email, c.phone].filter(Boolean).join(' · ') || 'Sin datos de contacto'}
+                    </div>
+                  </div>
+                  <button onClick={()=>editClient(c)} style={{border:'none',background:'none',cursor:'pointer',color:'var(--ink-muted)'}}><I.Settings size={14}/></button>
+                  <button onClick={()=>archiveClient(c)} style={{border:'none',background:'none',cursor:'pointer',color:'var(--danger-fg)'}}><I.Trash size={14}/></button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-lg)',padding:14,display:'flex',flexDirection:'column',gap:8}}>
+            <div style={{fontFamily:'var(--font-sans)',fontSize:14,fontWeight:600,color:'var(--ink-strong)'}}>
+              {editing ? 'Editar cliente' : 'Nuevo cliente'}
+            </div>
+            <input className="tk-modal__input" placeholder="Nombre / Razón social *" value={form.name} onChange={e=>setForm(s=>({...s,name:e.target.value}))} />
+            <div className="tk-dyn__grid2">
+              <input className="tk-modal__input" placeholder="Nombre comercial" value={form.commercial_name} onChange={e=>setForm(s=>({...s,commercial_name:e.target.value}))} />
+              <input className="tk-modal__input" placeholder="RNC / Cédula" value={form.tax_id} onChange={e=>setForm(s=>({...s,tax_id:e.target.value}))} />
+            </div>
+            <div className="tk-dyn__grid2">
+              <input className="tk-modal__input" placeholder="Email" value={form.email} onChange={e=>setForm(s=>({...s,email:e.target.value}))} />
+              <input className="tk-modal__input" placeholder="Teléfono" value={form.phone} onChange={e=>setForm(s=>({...s,phone:e.target.value}))} />
+            </div>
+            <input className="tk-modal__input" placeholder="Dirección" value={form.address} onChange={e=>setForm(s=>({...s,address:e.target.value}))} />
+            <div className="tk-dyn__grid2">
+              <input className="tk-modal__input" placeholder="Persona de contacto" value={form.contact_name} onChange={e=>setForm(s=>({...s,contact_name:e.target.value}))} />
+              <input className="tk-modal__input" placeholder="Cargo del contacto" value={form.contact_position} onChange={e=>setForm(s=>({...s,contact_position:e.target.value}))} />
+            </div>
+            <textarea className="tk-modal__input" rows={3} style={{height:'auto',padding:'10px'}} placeholder="Notas"
+              value={form.notes} onChange={e=>setForm(s=>({...s,notes:e.target.value}))} />
+            <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+              {editing ? <button onClick={resetForm} style={{padding:'7px 12px',border:'1px solid var(--border)',borderRadius:8,background:'var(--surface)',cursor:'pointer'}}>Cancelar</button> : null}
+              <button onClick={save} style={{padding:'7px 12px',border:'none',borderRadius:8,background:'var(--accent)',color:'var(--accent-on)',cursor:'pointer'}}>
+                {editing ? 'Guardar cambios' : 'Crear cliente'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── AssetsScreen ──────────────────────────────────────────────────────────────
 const ASSET_TYPES = [
   {
@@ -1159,5 +1388,5 @@ function AppTopBar({ crumb, theme, onToggleTheme, user, onProfile, onLogout }) {
 
 window.TectoScreens = {
   DynamicGenerator, FreeEditor, PlantillasWorkspace, DocumentosScreen,
-  AssetsScreen, SettingsScreen, ProfileScreen, AuthCard, NewDocModal, AppTopBar,
+  ClientsScreen, AssetsScreen, SettingsScreen, ProfileScreen, AuthCard, NewDocModal, AppTopBar,
 };
